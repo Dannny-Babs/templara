@@ -1,0 +1,148 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #eef2f6;
+  color: #111827;
+}
+
+.playground {
+  min-height: 100vh;
+}
+
+.topbar {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 20px;
+  background: white;
+  border-bottom: 1px solid #d8dee8;
+}
+
+.brand {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.topbar span {
+  color: #64748b;
+}
+
+.font-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.font-picker select {
+  height: 32px;
+  min-width: 168px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0 32px 0 10px;
+  background: white;
+  color: #111827;
+  font: inherit;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  align-items: start;
+  padding: 24px;
+}
+
+.preview-shell {
+  min-width: 0;
+  overflow: auto;
+  padding: 16px 0 48px;
+}
+
+.debug-panel {
+  position: sticky;
+  top: 24px;
+  padding: 16px;
+  background: white;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+}
+
+.debug-panel h2 {
+  margin: 0 0 16px;
+  font-size: 15px;
+}
+
+.debug-panel h3 {
+  margin: 16px 0 8px;
+  font-size: 12px;
+  letter-spacing: 0;
+  color: #334155;
+}
+
+.debug-panel dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.debug-panel dl div {
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.debug-panel dt {
+  margin: 0 0 4px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.debug-panel dd {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.debug-panel ul {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.debug-panel li {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.debug-panel li strong {
+  color: #b45309;
+}
+
+.debug-panel li span {
+  color: #475569;
+}
