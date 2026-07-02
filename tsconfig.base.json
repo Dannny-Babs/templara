@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@templara/assets": ["packages/assets/src/index.ts"],
+      "@templara/cli": ["packages/cli/src/index.ts"],
+      "@templara/core": ["packages/core/src/index.ts"],
+      "@templara/editor": ["packages/editor/src/index.ts"],
+      "@templara/pdf": ["packages/pdf/src/index.ts"],
+      "@templara/react-renderer": ["packages/react-renderer/src/index.ts"],
+      "@templara/renderer": ["packages/renderer/src/index.ts"],
+      "@templara/templates": ["packages/templates/src/index.ts"]
+    },
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx"
+  }
+}
