@@ -1,0 +1,25 @@
+{
+  "name": "@templara/react-renderer",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@templara/renderer": "workspace:*",
+    "bwip-js": "^4.11.1"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  }
+}
