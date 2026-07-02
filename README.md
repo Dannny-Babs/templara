@@ -1,0 +1,128 @@
+# Templara
+
+Templara is a browser-first visual document/template builder.
+
+It combines a Figma-like design editor with a deterministic document renderer. The goal is to let users design structured business documents once, bind them to JSON data, and render final outputs such as previews, PDFs, images, and eventually HTML.
+
+Templara is built for documents where layout matters and data changes:
+
+- shipment BOLs
+- invoices
+- receipts
+- paystubs
+- shipping labels
+- certificates
+- structured reports
+
+## Core Idea
+
+```txt
+Design once.
+Bind to data.
+Render many documents.
+```
+
+The editor and renderer are intentionally separate.
+
+- The editor shows authored template structure on one active page.
+- The preview/export renderer resolves data, expands repeats, paginates, and creates final output.
+
+That means repeat nodes show as one editable template row in the editor, but expand into real rows in preview/export.
+
+## Current Status
+
+Current active template:
+
+- Shipment BOL
+
+Current editor features:
+
+- fixed viewport app shell
+- icon-only insert rail
+- keyboard shortcuts for tools
+- one-page editor canvas
+- layers panel
+- searchable data panel
+- contextual right inspector
+- grid, rulers, guides, and snapping controls
+- bottom-left canvas dock
+- bottom-center page switcher
+- preview overlay
+- preview dropdown UI
+- barcode and QR node support
+- Google Fonts Geist / Geist Mono setup
+
+Current renderer features:
+
+- binding resolution
+- repeat expansion
+- repeat row fit calculations
+- pagination for overflow repeat rows
+- render warnings and diagnostics
+- React preview rendering
+
+## Documentation
+
+Start here:
+
+- [Product and system overview](docs/product-system-overview.md)
+- [Project context and roadmap](docs/project-context-and-roadmap.md)
+- [Architecture notes](docs/architecture.md)
+
+The overview explains what Templara is, how the editor/renderer split works, the package architecture, the document model, and the long-term product direction.
+
+The context/roadmap doc summarizes what has been built in this chat and what remains.
+
+## Workspace
+
+```txt
+apps/
+  studio/              main visual editor product
+  playground/          renderer and template experiments
+  docs/                documentation site shell
+
+packages/
+  core/                document schema, node types, bindings, page presets
+  renderer/            template + data -> paginated render tree
+  react-renderer/      render tree -> React DOM/SVG preview
+  editor/              canvas, tools, layers, inspector, data panel
+  pdf/                 browser-first PDF export direction
+  assets/              fonts, images, asset helpers
+  templates/           starter templates and sample data
+  cli/                 future command-line rendering/export
+```
+
+## Development
+
+Install dependencies from the repo root, then run the Studio app.
+
+```sh
+pnpm install
+pnpm --filter @templara/studio dev
+```
+
+Useful checks:
+
+```sh
+pnpm run typecheck
+pnpm run test
+pnpm run build
+```
+
+## Key Engineering Rules
+
+- Template JSON is the source of truth.
+- The editor must not call the final renderer for its design canvas.
+- The editor shows authored nodes and handlebars.
+- Preview/export resolves data, expands repeats, and paginates.
+- Repeated rows should not expand on the editor canvas.
+- Packages should remain embeddable over time.
+
+## Known Near-Term Work
+
+- Fix the visible preview dropdown interaction/clipping issue.
+- Make inspector controls more complete and fully backed by schema.
+- Add resize handles, delete/duplicate, nudge, and history.
+- Improve data binding insertion into text nodes.
+- Expand repeat pagination tests.
+- Add real PDF export action.
