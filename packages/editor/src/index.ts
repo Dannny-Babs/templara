@@ -1,54 +1,54 @@
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, MouseEvent, PointerEvent, ReactElement, ReactNode } from "react";
+import {
+  createElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
+import type {
+  CSSProperties,
+  DragEvent,
+  KeyboardEvent,
+  MouseEvent,
+  PointerEvent,
+  ReactElement,
+} from "react";
 import type { IconSvgElement } from "@hugeicons/react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Add01Icon,
-  AlignBottomIcon,
-  AlignHorizontalCenterIcon,
-  AlignHorizontalDistributeCenterIcon,
-  AlignLeftIcon,
-  AlignRightIcon,
-  AlignTopIcon,
-  AlignVerticalCenterIcon,
-  AlignVerticalDistributeCenterIcon,
   BarcodeIcon,
   ChevronDownIcon,
-  ChevronLeftIcon,
   ChevronRightIcon,
   CircleIcon,
   Copy01Icon,
+  CubeIcon,
   CursorPointer02Icon,
-  Download01Icon,
-  FileChartColumnIcon,
   FrameIcon,
-  GridIcon,
   GridTableIcon,
   Image01Icon,
+  BendToolIcon,
   Link01Icon,
-  LineIcon,
-  MagnetIcon,
-  Maximize01Icon,
   MinusSignIcon,
-  MoreHorizontalIcon,
+  Pan03Icon,
   QrCodeIcon,
   RepeatIcon,
   Redo03Icon,
-  RefreshIcon,
-  RulerIcon,
   SignatureIcon,
   SquareIcon,
-  Target02Icon,
+  ThirdBracketIcon,
   TypeCursorIcon,
   Undo03Icon,
-  ViewIcon
+  ViewIcon,
 } from "@hugeicons-pro/core-stroke-rounded";
 import type {
   BarcodeNode,
+  ConditionalNode,
   DataField,
   DocNode,
   DocumentTemplate,
-  DynamicValue,
   FlowNode,
   Frame,
   GridNode,
@@ -58,34 +58,77 @@ import type {
   QrNode,
   RepeatNode,
   ShapeNode,
-  TextNode
+  TextNode,
 } from "@templara/core";
 import { DocumentPreview } from "@templara/react-renderer";
 import { renderDocument } from "@templara/renderer";
-import type { AlignmentCommand, EditorNodeItem, EditorRenderNode, EditorVisual } from "./editorModel";
+import type {
+  EditorNodeItem,
+  EditorRenderNode,
+  EditorVisual,
+} from "./editorModel";
 import {
   buildEditorPageModel,
   collectPageNodeItems,
-  getAlignmentFramePatches,
   updateNodeById,
-  updateNodesById
+  updateNodesById,
 } from "./editorModel";
+import type { DataExplorerField, DataExplorerGroup } from "./dataExplorer";
+import {
+  applyDataBindingToNode,
+  buildDataExplorerModel,
+  createBoundTextNode,
+  isFieldBindableForNode,
+} from "./dataExplorer";
+import {
+  NodeInspectorPanel,
+  PageInspectorPanel,
+  initialInspectorUiState,
+  inspectorUiReducer,
+  resolvePageInspectorDraft,
+} from "./inspector";
 
-export type { AlignmentCommand, EditorPageModel, EditorRenderNode } from "./editorModel";
-export { buildEditorPageModel, collectPageNodeItems, getAlignmentFramePatches } from "./editorModel";
+export type {
+  AlignmentCommand,
+  EditorPageModel,
+  EditorRenderNode,
+} from "./editorModel";
+export {
+  buildEditorPageModel,
+  collectPageNodeItems,
+  getAlignmentFramePatches,
+} from "./editorModel";
 
 const DEFAULT_ZOOM = 0.76;
 const GRID_SIZE = 8;
 const SNAP_THRESHOLD = 5;
 const RULER_SIZE = 24;
 const TOOLTIP_DELAY_MS = 420;
-const UI_FONT_FAMILY = 'Geist, "Geist Sans", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-const UI_MONO_FONT_FAMILY = '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+const BINDING_DRAG_TYPE = "application/x-templara-binding";
+const INSPECTOR_PANEL_WIDTH = 320;
+const INSPECTOR_MIN_WIDTH = 280;
+const INSPECTOR_MAX_WIDTH = 640;
+const DATA_PANEL_DEFAULT_HEIGHT = 286;
+const DATA_PANEL_MIN_HEIGHT = 44;
+const DATA_PANEL_MAX_HEIGHT = 620;
+const UI_FONT_FAMILY =
+  'Geist, "Geist Sans", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+const UI_MONO_FONT_FAMILY =
+  '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+const UI_CHROME_BORDER = "#e8ecf1";
+const UI_CHROME_RADIUS = 6;
+const UI_SURFACE_SHADOW = "0 1px 2px rgba(15, 23, 42, 0.04)";
+const UI_FOCUS_RING_SHADOW =
+  "0 0 0 1px rgba(99, 102, 241, 0.38), 0 1px 2px rgba(15, 23, 42, 0.05)";
+const UI_SELECTION_RING =
+  "0 0 0 1px rgba(99, 102, 241, 0.32), 0 1px 2px rgba(15, 23, 42, 0.04)";
+const UI_SELECTION_BG = "#f8faff";
 
 export interface DocumentEditorProps {
   value: DocumentTemplate;
   data?: Record<string, unknown>;
   onChange?: (nextValue: DocumentTemplate) => void;
+  onDataChange?: (nextData: Record<string, unknown>) => void;
   initialPageId?: string;
   onActivePageChange?: (pageId: string) => void;
 }
@@ -102,9 +145,9 @@ type InsertTool =
   | "qr"
   | "table"
   | "repeat"
+  | "condition"
   | "frame"
   | "signature";
-type InspectorTab = "design" | "data" | "style";
 type GuideAxis = "x" | "y";
 
 interface DragState {
@@ -113,6 +156,8 @@ interface DragState {
   startClientY: number;
   startFrames: Record<string, Frame>;
   startAbsoluteFrames: Record<string, Frame>;
+  startTemplate: DocumentTemplate;
+  historyRecorded: boolean;
 }
 
 interface ActiveGuide {
@@ -157,7 +202,7 @@ const sidebarIcons = {
   status: "/icons/Ellipse%202.svg",
   table: "/icons/akar-icons_panel-split-row-2.svg",
   text: "/icons/carbon_text-small-caps.svg",
-  textAlt: "/icons/carbon_text-small-caps-1.svg"
+  textAlt: "/icons/carbon_text-small-caps-1.svg",
 } as const;
 
 const insertTools: InsertToolDefinition[] = [
@@ -165,33 +210,47 @@ const insertTools: InsertToolDefinition[] = [
   { id: "text", label: "Text", shortcut: "T", icon: TypeCursorIcon },
   { id: "image", label: "Image", shortcut: "I", icon: Image01Icon },
   { id: "rectangle", label: "Rectangle", shortcut: "R", icon: SquareIcon },
-  { id: "line", label: "Line", shortcut: "L", icon: LineIcon },
+  { id: "line", label: "Line", shortcut: "L", icon: BendToolIcon },
   { id: "shape", label: "Shape", shortcut: "O", icon: CircleIcon },
   { id: "barcode", label: "Barcode", shortcut: "B", icon: BarcodeIcon },
   { id: "qr", label: "QR Code", shortcut: "Q", icon: QrCodeIcon },
   { id: "table", label: "Table", shortcut: "G", icon: GridTableIcon },
   { id: "repeat", label: "Repeat", shortcut: "E", icon: RepeatIcon },
+  {
+    id: "condition",
+    label: "Condition",
+    shortcut: "C",
+    icon: ThirdBracketIcon,
+  },
   { id: "frame", label: "Frame", shortcut: "F", icon: FrameIcon },
-  { id: "signature", label: "Signature", shortcut: "S", icon: SignatureIcon }
+  { id: "signature", label: "Signature", shortcut: "S", icon: SignatureIcon },
 ];
 
-const alignmentCommands: Array<{ id: AlignmentCommand; icon: IconSvgElement; title: string }> = [
-  { id: "align-left", icon: AlignLeftIcon, title: "Align left" },
-  { id: "align-center-x", icon: AlignHorizontalCenterIcon, title: "Align horizontal center" },
-  { id: "align-right", icon: AlignRightIcon, title: "Align right" },
-  { id: "align-top", icon: AlignTopIcon, title: "Align top" },
-  { id: "align-center-y", icon: AlignVerticalCenterIcon, title: "Align vertical center" },
-  { id: "align-bottom", icon: AlignBottomIcon, title: "Align bottom" },
-  { id: "distribute-x", icon: AlignHorizontalDistributeCenterIcon, title: "Distribute horizontal" },
-  { id: "distribute-y", icon: AlignVerticalDistributeCenterIcon, title: "Distribute vertical" }
-];
-
-export function DocumentEditor({ value, data, onChange, initialPageId, onActivePageChange }: DocumentEditorProps): ReactElement {
-  const [draftTemplate, setDraftTemplate] = useState<DocumentTemplate>(() => structuredClone(value));
-  const [activePageId, setActivePageId] = useState<string>(() => initialPageId ?? value.pages[0]?.id ?? "");
+export function DocumentEditor({
+  value,
+  data,
+  onChange,
+  onDataChange,
+  initialPageId,
+  onActivePageChange,
+}: DocumentEditorProps): ReactElement {
+  const [draftTemplate, setDraftTemplate] = useState<DocumentTemplate>(() =>
+    structuredClone(value),
+  );
+  const [draftData, setDraftData] = useState<
+    Record<string, unknown> | undefined
+  >(() => cloneEditorData(data));
+  const [historyPast, setHistoryPast] = useState<DocumentTemplate[]>([]);
+  const [historyFuture, setHistoryFuture] = useState<DocumentTemplate[]>([]);
+  const [activePageId, setActivePageId] = useState<string>(
+    () => initialPageId ?? value.pages[0]?.id ?? "",
+  );
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [activeTool, setActiveTool] = useState<InsertTool>("select");
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("design");
+  const [inspectorUiState, dispatchInspectorUi] = useReducer(
+    inspectorUiReducer,
+    initialInspectorUiState,
+  );
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [showGrid, setShowGrid] = useState(true);
   const [showRulers, setShowRulers] = useState(true);
@@ -204,6 +263,58 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
   const dragState = useRef<DragState | null>(null);
   const guideDragState = useRef<GuideDragState | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
+  const [inspectorWidth, setInspectorWidth] = useState(INSPECTOR_PANEL_WIDTH);
+  const [dataPanelHeight, setDataPanelHeight] = useState(DATA_PANEL_DEFAULT_HEIGHT);
+
+  const beginInspectorResize = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = inspectorWidth;
+      const onMove = (moveEvent: globalThis.PointerEvent): void => {
+        const next = Math.min(INSPECTOR_MAX_WIDTH, Math.max(INSPECTOR_MIN_WIDTH, startWidth + (startX - moveEvent.clientX)));
+        setInspectorWidth(next);
+      };
+      const onUp = (): void => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [inspectorWidth],
+  );
+
+  const beginDataPanelResize = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const startY = event.clientY;
+      const startHeight = dataPanelHeight;
+      const onMove = (moveEvent: globalThis.PointerEvent): void => {
+        const next = Math.min(DATA_PANEL_MAX_HEIGHT, Math.max(DATA_PANEL_MIN_HEIGHT, startHeight + (startY - moveEvent.clientY)));
+        setDataPanelHeight(next);
+      };
+      const onUp = (): void => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      document.body.style.cursor = "row-resize";
+      document.body.style.userSelect = "none";
+    },
+    [dataPanelHeight],
+  );
+
+  const toggleDataPanelCollapsed = useCallback(() => {
+    setDataPanelHeight((current) => (current <= DATA_PANEL_MIN_HEIGHT ? DATA_PANEL_DEFAULT_HEIGHT : DATA_PANEL_MIN_HEIGHT));
+  }, []);
 
   useEffect(() => {
     const nextTemplate = structuredClone(value);
@@ -214,7 +325,13 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
     setSelectedNodeIds([]);
     setVerticalGuides([]);
     setHorizontalGuides([]);
+    setHistoryPast([]);
+    setHistoryFuture([]);
   }, [initialPageId, value]);
+
+  useEffect(() => {
+    setDraftData(cloneEditorData(data));
+  }, [data]);
 
   useEffect(() => {
     if (!draftTemplate.pages.some((page) => page.id === activePageId)) {
@@ -224,21 +341,63 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
     }
   }, [activePageId, draftTemplate.pages, onActivePageChange]);
 
-  const pageModel = useMemo(() => buildEditorPageModel(draftTemplate, activePageId), [activePageId, draftTemplate]);
-  const nodeItems = useMemo(() => collectPageNodeItems(draftTemplate, activePageId), [activePageId, draftTemplate]);
-  const itemLookup = useMemo(() => new Map(nodeItems.map((item) => [item.id, item])), [nodeItems]);
-  const selectedItems = selectedNodeIds.map((id) => itemLookup.get(id)).filter((item): item is EditorNodeItem => Boolean(item));
+  const pageModel = useMemo(
+    () => buildEditorPageModel(draftTemplate, activePageId),
+    [activePageId, draftTemplate],
+  );
+  const pageInspectorDraft = useMemo(
+    () => resolvePageInspectorDraft(inspectorUiState, activePageId),
+    [activePageId, inspectorUiState],
+  );
+  const nodeItems = useMemo(
+    () => collectPageNodeItems(draftTemplate, activePageId),
+    [activePageId, draftTemplate],
+  );
+  const itemLookup = useMemo(
+    () => new Map(nodeItems.map((item) => [item.id, item])),
+    [nodeItems],
+  );
+  const selectedItems = selectedNodeIds
+    .map((id) => itemLookup.get(id))
+    .filter((item): item is EditorNodeItem => Boolean(item));
   const primarySelectedItem = selectedItems[0];
-  const previewDocument = useMemo(() => renderDocument({ template: draftTemplate, data, mode: "preview" }), [data, draftTemplate]);
-  const fontImports = useMemo(() => buildFontImports(draftTemplate), [draftTemplate]);
-
-  useEffect(() => {
-    setInspectorTab("design");
-  }, [primarySelectedItem?.id]);
+  const dataExplorerModel = useMemo(
+    () =>
+      buildDataExplorerModel({
+        template: draftTemplate,
+        data: draftData,
+        nodeItems,
+        selectedNodeIds,
+      }),
+    [draftData, draftTemplate, nodeItems, selectedNodeIds],
+  );
+  const previewDocument = useMemo(
+    () =>
+      renderDocument({
+        template: draftTemplate,
+        data: draftData,
+        mode: "preview",
+      }),
+    [draftData, draftTemplate],
+  );
+  const fontImports = useMemo(
+    () => buildFontImports(draftTemplate),
+    [draftTemplate],
+  );
 
   useEffect(() => {
     setSelectedNodeIds((ids) => ids.filter((id) => itemLookup.has(id)));
   }, [itemLookup]);
+
+  useEffect(() => {
+    dispatchInspectorUi({
+      type: "garbage-collect",
+      targetIds: [
+        `page:${activePageId}`,
+        ...nodeItems.map((item) => `node:${item.id}` as const),
+      ],
+    });
+  }, [activePageId, nodeItems]);
 
   useEffect(() => {
     if (!fontImports || typeof window === "undefined") {
@@ -246,7 +405,9 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
     }
 
     const styleId = "templara-editor-fonts";
-    let styleElement = window.document.getElementById(styleId) as HTMLStyleElement | null;
+    let styleElement = window.document.getElementById(
+      styleId,
+    ) as HTMLStyleElement | null;
 
     if (!styleElement) {
       styleElement = window.document.createElement("style");
@@ -258,22 +419,32 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
   }, [fontImports]);
 
   const commitTemplate = useCallback(
-    (nextTemplate: DocumentTemplate) => {
+    (nextTemplate: DocumentTemplate, options: { history?: boolean } = {}) => {
+      if (options.history !== false) {
+        setHistoryPast((past) =>
+          [...past, structuredClone(draftTemplate)].slice(-80),
+        );
+        setHistoryFuture([]);
+      }
+
       setDraftTemplate(nextTemplate);
       onChange?.(nextTemplate);
     },
-    [onChange]
+    [draftTemplate, onChange],
   );
 
   const updateFramePatches = useCallback(
-    (patches: Record<string, Partial<Frame>>) => {
+    (
+      patches: Record<string, Partial<Frame>>,
+      options: { history?: boolean } = {},
+    ) => {
       const nextTemplate = structuredClone(draftTemplate);
 
       if (updateNodesById(nextTemplate, patches)) {
-        commitTemplate(nextTemplate);
+        commitTemplate(nextTemplate, options);
       }
     },
-    [commitTemplate, draftTemplate]
+    [commitTemplate, draftTemplate],
   );
 
   const updateNode = useCallback(
@@ -284,7 +455,102 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
         commitTemplate(nextTemplate);
       }
     },
-    [commitTemplate, draftTemplate]
+    [commitTemplate, draftTemplate],
+  );
+
+  const updatePage = useCallback(
+    (
+      pageId: string,
+      update: (page: DocumentTemplate["pages"][number]) => void,
+    ) => {
+      const nextTemplate = structuredClone(draftTemplate);
+      const page = nextTemplate.pages.find(
+        (candidate) => candidate.id === pageId,
+      );
+
+      if (!page) {
+        return;
+      }
+
+      update(page);
+      commitTemplate(nextTemplate);
+    },
+    [commitTemplate, draftTemplate],
+  );
+
+  const commitData = useCallback(
+    (nextData: Record<string, unknown>) => {
+      const cloned = structuredClone(nextData);
+      setDraftData(cloned);
+      onDataChange?.(cloned);
+    },
+    [onDataChange],
+  );
+
+  const undoTemplate = useCallback(() => {
+    const previous = historyPast.at(-1);
+
+    if (!previous) {
+      return;
+    }
+
+    const nextTemplate = structuredClone(previous);
+    setHistoryPast((past) => past.slice(0, -1));
+    setHistoryFuture((future) =>
+      [structuredClone(draftTemplate), ...future].slice(0, 80),
+    );
+    setDraftTemplate(nextTemplate);
+    onChange?.(nextTemplate);
+  }, [draftTemplate, historyPast, onChange]);
+
+  const redoTemplate = useCallback(() => {
+    const next = historyFuture[0];
+
+    if (!next) {
+      return;
+    }
+
+    const nextTemplate = structuredClone(next);
+    setHistoryFuture((future) => future.slice(1));
+    setHistoryPast((past) =>
+      [...past, structuredClone(draftTemplate)].slice(-80),
+    );
+    setDraftTemplate(nextTemplate);
+    onChange?.(nextTemplate);
+  }, [draftTemplate, historyFuture, onChange]);
+
+  const duplicateNode = useCallback(
+    (nodeId: string) => {
+      const nextTemplate = structuredClone(draftTemplate);
+      const duplicatedId = duplicateNodeInTemplate(nextTemplate, nodeId);
+
+      if (!duplicatedId) {
+        return;
+      }
+
+      commitTemplate(nextTemplate);
+      setSelectedNodeIds([duplicatedId]);
+    },
+    [commitTemplate, draftTemplate],
+  );
+
+  const deleteNodes = useCallback(
+    (nodeIds: string[]) => {
+      const nextTemplate = structuredClone(draftTemplate);
+      let changed = false;
+
+      for (const nodeId of nodeIds) {
+        changed = deleteNodeFromTemplate(nextTemplate, nodeId) || changed;
+      }
+
+      if (!changed) {
+        return;
+      }
+
+      commitTemplate(nextTemplate);
+      setSelectedNodeIds([]);
+    },
+    [commitTemplate, draftTemplate],
   );
 
   const setActivePage = useCallback(
@@ -293,19 +559,57 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
       setSelectedNodeIds([]);
       onActivePageChange?.(pageId);
     },
-    [onActivePageChange]
+    [onActivePageChange],
   );
 
   useEffect(() => {
     function handleToolShortcut(event: globalThis.KeyboardEvent): void {
-      if (previewOpen || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
+      if (previewOpen || event.defaultPrevented || event.altKey) {
         return;
       }
 
       const target = event.target instanceof HTMLElement ? event.target : null;
       const tagName = target?.tagName.toLowerCase();
 
-      if (target?.isContentEditable || tagName === "input" || tagName === "textarea" || tagName === "select") {
+      if (
+        target?.isContentEditable ||
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select"
+      ) {
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redoTemplate();
+        } else {
+          undoTemplate();
+        }
+        return;
+      }
+
+      if (
+        selectedNodeIds.length > 0 &&
+        (event.key === "Backspace" || event.key === "Delete")
+      ) {
+        event.preventDefault();
+        deleteNodes(selectedNodeIds);
+        return;
+      }
+
+      if (
+        selectedNodeIds.length > 0 &&
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "d"
+      ) {
+        event.preventDefault();
+        duplicateNode(selectedNodeIds[0]);
+        return;
+      }
+
+      if (event.metaKey || event.ctrlKey) {
         return;
       }
 
@@ -314,7 +618,9 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
         return;
       }
 
-      const nextTool = insertTools.find((tool) => tool.shortcut.toLowerCase() === event.key.toLowerCase());
+      const nextTool = insertTools.find(
+        (tool) => tool.shortcut.toLowerCase() === event.key.toLowerCase(),
+      );
 
       if (!nextTool) {
         return;
@@ -329,12 +635,26 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
     return () => {
       window.removeEventListener("keydown", handleToolShortcut);
     };
-  }, [previewOpen]);
+  }, [
+    deleteNodes,
+    duplicateNode,
+    previewOpen,
+    redoTemplate,
+    selectedNodeIds,
+    undoTemplate,
+  ]);
 
   useEffect(() => {
     function handlePointerMove(event: globalThis.PointerEvent): void {
       if (guideDragState.current) {
-        updateDraggedGuide(event, guideDragState.current, boardRef.current, zoom, setVerticalGuides, setHorizontalGuides);
+        updateDraggedGuide(
+          event,
+          guideDragState.current,
+          boardRef.current,
+          zoom,
+          setVerticalGuides,
+          setHorizontalGuides,
+        );
         return;
       }
 
@@ -346,13 +666,13 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
 
       const rawDelta = {
         x: (event.clientX - drag.startClientX) / zoom,
-        y: (event.clientY - drag.startClientY) / zoom
+        y: (event.clientY - drag.startClientY) / zoom,
       };
       const snapped = snapMove(rawDelta, drag, nodeItems, pageModel.size, {
         snapToGrid,
         snapToGuides,
         verticalGuides,
-        horizontalGuides
+        horizontalGuides,
       });
       const patches: Record<string, Partial<Frame>> = {};
 
@@ -365,12 +685,35 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
 
         patches[nodeId] = {
           x: roundFrameValue(startFrame.x + snapped.delta.x),
-          y: roundFrameValue(startFrame.y + snapped.delta.y)
+          y: roundFrameValue(startFrame.y + snapped.delta.y),
         };
       }
 
+      const moved = Object.entries(patches).some(([nodeId, patch]) => {
+        const startFrame = drag.startFrames[nodeId];
+
+        return Boolean(
+          startFrame &&
+          ((patch.x != null && patch.x !== startFrame.x) ||
+            (patch.y != null && patch.y !== startFrame.y)),
+        );
+      });
+
+      if (!moved) {
+        setActiveGuides(snapped.guides);
+        return;
+      }
+
+      if (!drag.historyRecorded) {
+        setHistoryPast((past) =>
+          [...past, structuredClone(drag.startTemplate)].slice(-80),
+        );
+        setHistoryFuture([]);
+        drag.historyRecorded = true;
+      }
+
       setActiveGuides(snapped.guides);
-      updateFramePatches(patches);
+      updateFramePatches(patches, { history: false });
     }
 
     function handlePointerUp(): void {
@@ -386,32 +729,55 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
     };
-  }, [horizontalGuides, nodeItems, pageModel.size, snapToGrid, snapToGuides, updateFramePatches, verticalGuides, zoom]);
+  }, [
+    horizontalGuides,
+    nodeItems,
+    pageModel.size,
+    snapToGrid,
+    snapToGuides,
+    updateFramePatches,
+    verticalGuides,
+    zoom,
+  ]);
 
   const handleNodePointerDown = useCallback(
     (event: PointerEvent<HTMLElement>, node: EditorRenderNode) => {
       event.stopPropagation();
 
-      const nextSelection = getNextSelection(selectedNodeIds, node.sourceNodeId, event.shiftKey);
-      const dragItems = nextSelection.map((id) => itemLookup.get(id)).filter((item): item is EditorNodeItem => Boolean(item));
+      const nextSelection = getNextSelection(
+        selectedNodeIds,
+        node.sourceNodeId,
+        event.shiftKey,
+      );
+      const dragItems = nextSelection
+        .map((id) => itemLookup.get(id))
+        .filter((item): item is EditorNodeItem => Boolean(item));
 
       setSelectedNodeIds(nextSelection);
       dragState.current = {
         nodeIds: dragItems.map((item) => item.id),
         startClientX: event.clientX,
         startClientY: event.clientY,
-        startFrames: Object.fromEntries(dragItems.map((item) => [item.id, item.frame])),
-        startAbsoluteFrames: Object.fromEntries(dragItems.map((item) => [item.id, item.absoluteFrame]))
+        startFrames: Object.fromEntries(
+          dragItems.map((item) => [item.id, item.frame]),
+        ),
+        startAbsoluteFrames: Object.fromEntries(
+          dragItems.map((item) => [item.id, item.absoluteFrame]),
+        ),
+        startTemplate: structuredClone(draftTemplate),
+        historyRecorded: false,
       };
     },
-    [itemLookup, selectedNodeIds]
+    [draftTemplate, itemLookup, selectedNodeIds],
   );
 
   const handleLayerSelect = useCallback(
     (event: MouseEvent<HTMLElement>, nodeId: string) => {
-      setSelectedNodeIds((ids) => getNextSelection(ids, nodeId, event.shiftKey));
+      setSelectedNodeIds((ids) =>
+        getNextSelection(ids, nodeId, event.shiftKey),
+      );
     },
-    []
+    [],
   );
 
   const handlePagePointerDown = useCallback(
@@ -423,8 +789,14 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
 
       const point = getPagePoint(event, zoom);
       const nextTemplate = structuredClone(draftTemplate);
-      const node = createNodeForTool(activeTool, nextTemplate, snapPoint(point, snapToGrid));
-      const page = nextTemplate.pages.find((candidate) => candidate.id === activePageId);
+      const node = createNodeForTool(
+        activeTool,
+        nextTemplate,
+        snapPoint(point, snapToGrid),
+      );
+      const page = nextTemplate.pages.find(
+        (candidate) => candidate.id === activePageId,
+      );
       const layer = page ? getWritableFixedLayer(page.layers) : undefined;
 
       if (!layer) {
@@ -436,7 +808,7 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
       setSelectedNodeIds([node.id]);
       setActiveTool("select");
     },
-    [activePageId, activeTool, commitTemplate, draftTemplate, snapToGrid, zoom]
+    [activePageId, activeTool, commitTemplate, draftTemplate, snapToGrid, zoom],
   );
 
   const handleFrameChange = useCallback(
@@ -451,42 +823,17 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
         [nodeId]: {
           ...patch,
           x: patch.x == null ? undefined : snapCoordinate(patch.x, snapToGrid),
-          y: patch.y == null ? undefined : snapCoordinate(patch.y, snapToGrid)
-        }
+          y: patch.y == null ? undefined : snapCoordinate(patch.y, snapToGrid),
+        },
       });
     },
-    [itemLookup, snapToGrid, updateFramePatches]
+    [itemLookup, snapToGrid, updateFramePatches],
   );
-
-  const handleAlignment = useCallback(
-    (command: AlignmentCommand) => {
-      const patches = getAlignmentFramePatches(
-        nodeItems.map((item) => ({ id: item.id, frame: item.frame, absoluteFrame: item.absoluteFrame })),
-        selectedNodeIds,
-        command,
-        pageModel.size
-      );
-
-      updateFramePatches(patches);
-    },
-    [nodeItems, pageModel.size, selectedNodeIds, updateFramePatches]
-  );
-
-  const resetDraft = useCallback(() => {
-    const nextTemplate = structuredClone(value);
-    const nextPageId = initialPageId ?? nextTemplate.pages[0]?.id ?? "";
-
-    setDraftTemplate(nextTemplate);
-    setActivePageId(nextPageId);
-    setSelectedNodeIds([]);
-    setVerticalGuides([]);
-    setHorizontalGuides([]);
-    onChange?.(nextTemplate);
-    onActivePageChange?.(nextPageId);
-  }, [initialPageId, onActivePageChange, onChange, value]);
 
   const handleFitPage = useCallback(() => {
-    const viewport = boardRef.current?.closest("[data-templara-editor-viewport]") as HTMLElement | null;
+    const viewport = boardRef.current?.closest(
+      "[data-templara-editor-viewport]",
+    ) as HTMLElement | null;
 
     if (!viewport) {
       setZoom(DEFAULT_ZOOM);
@@ -499,146 +846,257 @@ export function DocumentEditor({ value, data, onChange, initialPageId, onActiveP
     const nextZoom = Math.min(
       availableWidth / (pageModel.size.width + rulerOffset),
       availableHeight / (pageModel.size.height + rulerOffset),
-      1
+      1,
     );
 
     setZoom(clampZoom(nextZoom));
   }, [pageModel.size.height, pageModel.size.width, showRulers]);
 
-  const activePageIndex = draftTemplate.pages.findIndex((page) => page.id === activePageId);
-  const safeActivePageIndex = activePageIndex >= 0 ? activePageIndex : 0;
-  const handlePageStep = useCallback(
-    (delta: number) => {
-      const nextPage = draftTemplate.pages[safeActivePageIndex + delta];
-
-      if (nextPage) {
-        setActivePage(nextPage.id);
-      }
-    },
-    [draftTemplate.pages, safeActivePageIndex, setActivePage]
+  const activePageIndex = draftTemplate.pages.findIndex(
+    (page) => page.id === activePageId,
   );
+  const safeActivePageIndex = activePageIndex >= 0 ? activePageIndex : 0;
 
-  const handleInsertBinding = useCallback(
-    (path: string) => {
-      if (!primarySelectedItem) {
+  const createBoundTextAtPoint = useCallback(
+    (field: DataExplorerField, point: Pick<Frame, "x" | "y">) => {
+      if (!isFieldBindableForNode(field)) {
         return;
       }
 
-      updateNode(primarySelectedItem.id, (node) => applyBindingPathToNode(node, path));
+      const nextTemplate = structuredClone(draftTemplate);
+      const page = nextTemplate.pages.find(
+        (candidate) => candidate.id === activePageId,
+      );
+      const layer = page ? getWritableFixedLayer(page.layers) : undefined;
+
+      if (!layer) {
+        return;
+      }
+
+      const node = createBoundTextNode(
+        createNodeId(nextTemplate, "bound-field"),
+        field.path,
+        snapPoint(point, snapToGrid),
+      );
+      layer.nodes.push(node);
+      commitTemplate(nextTemplate);
+      setSelectedNodeIds([node.id]);
+      setActiveTool("select");
     },
-    [primarySelectedItem, updateNode]
+    [activePageId, commitTemplate, draftTemplate, snapToGrid],
+  );
+
+  const handleDataFieldActivate = useCallback(
+    (field: DataExplorerField) => {
+      if (selectedNodeIds.length > 1) {
+        return;
+      }
+
+      if (primarySelectedItem) {
+        if (!isFieldBindableForNode(field, primarySelectedItem.node)) {
+          return;
+        }
+
+        updateNode(primarySelectedItem.id, (node) =>
+          applyDataBindingToNode(node, field.path),
+        );
+        return;
+      }
+
+      createBoundTextAtPoint(field, defaultDataInsertPoint(pageModel));
+    },
+    [
+      createBoundTextAtPoint,
+      pageModel,
+      primarySelectedItem,
+      selectedNodeIds.length,
+      updateNode,
+    ],
+  );
+
+  const handleBindingDrop = useCallback(
+    (event: DragEvent<HTMLDivElement>, fieldPath: string) => {
+      const field = dataExplorerModel.allFields.find(
+        (candidate) => candidate.path === fieldPath,
+      );
+
+      if (!field) {
+        return;
+      }
+
+      createBoundTextAtPoint(field, getPagePoint(event, zoom));
+    },
+    [createBoundTextAtPoint, dataExplorerModel.allFields, zoom],
   );
 
   return createElement(
     "div",
-    { style: shellStyle },
+    {
+      style: {
+        ...shellStyle,
+        gridTemplateColumns: `60px 300px minmax(0, 1fr) ${inspectorWidth}px`,
+      },
+    },
     createElement(TopToolbar, {
-      templateName: draftTemplate.metadata?.name ? String(draftTemplate.metadata.name) : (pageModel.name || draftTemplate.id),
-      pages: draftTemplate.pages,
-      activePageId,
+      templateName: templateDisplayName(draftTemplate, pageModel.name),
       zoom,
-      selectedCount: selectedNodeIds.length,
-      showGrid,
-      showRulers,
-      snapToGrid,
-      snapToGuides,
-      onSelectPage: setActivePage,
+      canUndo: historyPast.length > 0,
+      canRedo: historyFuture.length > 0,
       onZoomChange: setZoom,
-      onToggleGrid: () => setShowGrid((value) => !value),
-      onToggleRulers: () => setShowRulers((value) => !value),
-      onToggleSnapGrid: () => setSnapToGrid((value) => !value),
-      onToggleSnapGuides: () => setSnapToGuides((value) => !value),
-      onAlign: handleAlignment,
+      onFitPage: handleFitPage,
+      onUndo: undoTemplate,
+      onRedo: redoTemplate,
+      onCopyTemplate: () => {
+        if (typeof navigator !== "undefined" && navigator.clipboard) {
+          void navigator.clipboard.writeText(
+            JSON.stringify(draftTemplate, null, 2),
+          );
+        }
+      },
       onPreview: () => setPreviewOpen(true),
       onSave: () => onChange?.(draftTemplate),
-      onReset: resetDraft
     }),
     createElement(ToolRail, { activeTool, onSelectTool: setActiveTool }),
     createElement(
       "aside",
-      { style: leftPanelStyle },
+      {
+        style: {
+          ...leftPanelStyle,
+          gridTemplateRows: `minmax(0, 1fr) ${dataPanelHeight}px`,
+        },
+      },
       createElement(NodeLayerList, {
         pages: draftTemplate.pages,
         items: nodeItems,
         activePageId,
         selectedNodeIds,
         onSelectPage: setActivePage,
-        onSelect: handleLayerSelect
+        onSelect: handleLayerSelect,
+      }),
+      createElement("div", {
+        style: { ...panelRowResizeHandleStyle, bottom: dataPanelHeight - 3 },
+        onPointerDown: beginDataPanelResize,
+        onDoubleClick: toggleDataPanelCollapsed,
+        title: "Drag to resize · double-click to collapse",
       }),
       createElement(DataSchemaPanel, {
-        template: draftTemplate,
-        selectedNodeType: primarySelectedItem?.type,
-        onInsertBinding: primarySelectedItem ? handleInsertBinding : undefined
-      })
+        model: dataExplorerModel,
+        selectedNode: primarySelectedItem?.node,
+        selectedCount: selectedNodeIds.length,
+        onActivateField: handleDataFieldActivate,
+      }),
     ),
     createElement(
       "main",
       { style: mainStyle },
       createElement(EditorCanvas, {
         page: pageModel,
+        pageInspectorDraft,
         zoom,
         showGrid,
         showRulers,
-        snapToGuides,
         selectedNodeIds,
         activeGuides,
         verticalGuides,
         horizontalGuides,
-        pageIndex: safeActivePageIndex,
-        pageCount: draftTemplate.pages.length,
         boardRef,
-        onZoomChange: setZoom,
-        onFitPage: handleFitPage,
-        onToggleGrid: () => setShowGrid((value) => !value),
-        onToggleRulers: () => setShowRulers((value) => !value),
-        onToggleGuides: () => setSnapToGuides((value) => !value),
-        onPreviousPage: () => handlePageStep(-1),
-        onNextPage: () => handlePageStep(1),
         onNodePointerDown: handleNodePointerDown,
         onPagePointerDown: handlePagePointerDown,
+        onBindingDrop: handleBindingDrop,
         onStartGuideDrag: (axis, index) => {
           guideDragState.current = { axis, index };
-        }
-      })
+        },
+      }),
     ),
     createElement(
       "aside",
-      { style: rightPanelStyle },
-      createElement(PanelHeader, {
-        title: primarySelectedItem ? inspectorTitleForItem(primarySelectedItem) : "Page Settings",
-        detail: selectedItems.length === 0 ? "No selection" : `${selectedItems.length} selected · ${primarySelectedItem?.type ?? ""}`
+      {
+        style: {
+          ...rightPanelStyle,
+          width: inspectorWidth,
+          minWidth: inspectorWidth,
+          maxWidth: inspectorWidth,
+        },
+      },
+      createElement("div", {
+        style: inspectorResizeHandleStyle,
+        onPointerDown: beginInspectorResize,
+        title: "Drag to resize",
       }),
       primarySelectedItem
-        ? createElement(NodeInspector, {
+        ? createElement(NodeInspectorPanel, {
+            template: draftTemplate,
+            data: draftData,
             item: primarySelectedItem,
+            nodeItems,
             selectedCount: selectedItems.length,
-            activeTab: inspectorTab,
-            onTabChange: setInspectorTab,
-            onFrameChange: (framePatch) => handleFrameChange(primarySelectedItem.id, framePatch),
-            onNodeUpdate: (update) => updateNode(primarySelectedItem.id, update)
+            uiState: inspectorUiState,
+            dispatch: dispatchInspectorUi,
+            onFrameCommit: (framePatch) =>
+              handleFrameChange(primarySelectedItem.id, framePatch),
+            onNodeCommit: (update) =>
+              updateNode(primarySelectedItem.id, update),
+            onDuplicate: () => duplicateNode(primarySelectedItem.id),
+            onDelete: () => deleteNodes(selectedNodeIds),
           })
-        : createElement(PageSettingsPanel, {
+        : createElement(PageInspectorPanel, {
+            template: draftTemplate,
+            data: draftData,
             page: pageModel,
+            pageTemplate:
+              draftTemplate.pages[safeActivePageIndex] ??
+              draftTemplate.pages[0],
+            uiState: inspectorUiState,
+            dispatch: dispatchInspectorUi,
             showGrid,
             showRulers,
             snapToGrid,
             snapToGuides,
+            onDataCommit: commitData,
+            onTemplateCommit: (update) => {
+              const nextTemplate = structuredClone(draftTemplate);
+              update(nextTemplate);
+              commitTemplate(nextTemplate);
+            },
+            onPageCommit: (update) => updatePage(pageModel.id, update),
             onToggleGrid: () => setShowGrid((value) => !value),
             onToggleRulers: () => setShowRulers((value) => !value),
             onToggleSnapGrid: () => setSnapToGrid((value) => !value),
-            onToggleSnapGuides: () => setSnapToGuides((value) => !value)
-          })
+            onToggleSnapGuides: () => setSnapToGuides((value) => !value),
+          }),
     ),
     previewOpen
       ? createElement(PreviewOverlay, {
           document: previewDocument,
-          onClose: () => setPreviewOpen(false)
+          onClose: () => setPreviewOpen(false),
         })
-      : null
+      : null,
   );
 }
 
-function ToolRail({ activeTool, onSelectTool }: { activeTool: InsertTool; onSelectTool: (tool: InsertTool) => void }): ReactElement {
+function templateDisplayName(
+  template: DocumentTemplate,
+  fallbackName?: string,
+): string {
+  const rawName = template.metadata?.name
+    ? String(template.metadata.name)
+    : fallbackName || template.id;
+  return /\btemplate\b/i.test(rawName) ? rawName : `${rawName} Template`;
+}
+
+function cloneEditorData(
+  data: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  return data ? structuredClone(data) : undefined;
+}
+
+function ToolRail({
+  activeTool,
+  onSelectTool,
+}: {
+  activeTool: InsertTool;
+  onSelectTool: (tool: InsertTool) => void;
+}): ReactElement {
   const [tooltipTool, setTooltipTool] = useState<InsertTool | null>(null);
   const tooltipTimer = useRef<number | null>(null);
 
@@ -657,7 +1115,7 @@ function ToolRail({ activeTool, onSelectTool }: { activeTool: InsertTool; onSele
         tooltipTimer.current = null;
       }, TOOLTIP_DELAY_MS);
     },
-    [clearTooltipTimer]
+    [clearTooltipTimer],
   );
 
   const hideTooltip = useCallback(() => {
@@ -687,23 +1145,33 @@ function ToolRail({ activeTool, onSelectTool }: { activeTool: InsertTool; onSele
             position: "relative",
             background: activeTool === tool.id ? "#eef2ff" : "transparent",
             borderColor: activeTool === tool.id ? "#818cf8" : "transparent",
-            color: activeTool === tool.id ? "#3730a3" : "#111827"
-          }
+            color: activeTool === tool.id ? "#3730a3" : "#111827",
+          },
         },
-        createElement(ToolIcon, { icon: tool.icon, style: railIconStyle, size: 16 }),
+        createElement(ToolIcon, {
+          icon: tool.icon,
+          style: railIconStyle,
+          size: 16,
+        }),
         tooltipTool === tool.id
           ? createElement(
               "span",
               { style: toolTooltipStyle, role: "tooltip" },
-              `${tool.label} (${tool.shortcut})`
+              `${tool.label} (${tool.shortcut})`,
             )
-          : null
-      )
-    )
+          : null,
+      ),
+    ),
   );
 }
 
-function InsertPanel({ activeTool, onSelectTool }: { activeTool: InsertTool; onSelectTool: (tool: InsertTool) => void }): ReactElement {
+function InsertPanel({
+  activeTool,
+  onSelectTool,
+}: {
+  activeTool: InsertTool;
+  onSelectTool: (tool: InsertTool) => void;
+}): ReactElement {
   return createElement(
     "section",
     { style: insertPanelStyle },
@@ -723,21 +1191,25 @@ function InsertPanel({ activeTool, onSelectTool }: { activeTool: InsertTool; onS
               ...insertToolButtonStyle,
               background: activeTool === tool.id ? "#eff6ff" : "#ffffff",
               borderColor: activeTool === tool.id ? "#93c5fd" : "#e5e7eb",
-              color: activeTool === tool.id ? "#1d4ed8" : "#1d2939"
-            }
+              color: activeTool === tool.id ? "#1d4ed8" : "#1d2939",
+            },
           },
-          createElement(ToolIcon, { icon: tool.icon, style: insertToolIconStyle, size: 15 }),
-          createElement("span", { style: insertToolLabelStyle }, tool.label)
-        )
-      )
-    )
+          createElement(ToolIcon, {
+            icon: tool.icon,
+            style: insertToolIconStyle,
+            size: 15,
+          }),
+          createElement("span", { style: insertToolLabelStyle }, tool.label),
+        ),
+      ),
+    ),
   );
 }
 
 function PagePanel({
   pages,
   activePageId,
-  onSelectPage
+  onSelectPage,
 }: {
   pages: DocumentTemplate["pages"];
   activePageId: string;
@@ -760,57 +1232,49 @@ function PagePanel({
             style: {
               ...pageButtonStyle,
               background: page.id === activePageId ? "#eff6ff" : "transparent",
-              borderColor: page.id === activePageId ? "#93c5fd" : "transparent"
-            }
+              borderColor: page.id === activePageId ? "#93c5fd" : "transparent",
+            },
           },
-          createElement("span", { style: layerNameStyle }, page.name ?? page.id),
-          createElement("span", { style: layerMetaStyle }, `${page.size.width} x ${page.size.height}px`)
-        )
-      )
-    )
+          createElement(
+            "span",
+            { style: layerNameStyle },
+            page.name ?? page.id,
+          ),
+          createElement(
+            "span",
+            { style: layerMetaStyle },
+            `${page.size.width} x ${page.size.height}px`,
+          ),
+        ),
+      ),
+    ),
   );
 }
 
 function TopToolbar({
   templateName,
-  pages,
-  activePageId,
   zoom,
-  selectedCount,
-  showGrid,
-  showRulers,
-  snapToGrid,
-  snapToGuides,
-  onSelectPage,
+  canUndo,
+  canRedo,
   onZoomChange,
-  onToggleGrid,
-  onToggleRulers,
-  onToggleSnapGrid,
-  onToggleSnapGuides,
-  onAlign,
+  onFitPage,
+  onUndo,
+  onRedo,
+  onCopyTemplate,
   onPreview,
   onSave,
-  onReset
 }: {
   templateName: string;
-  pages: DocumentTemplate["pages"];
-  activePageId: string;
   zoom: number;
-  selectedCount: number;
-  showGrid: boolean;
-  showRulers: boolean;
-  snapToGrid: boolean;
-  snapToGuides: boolean;
-  onSelectPage: (pageId: string) => void;
+  canUndo: boolean;
+  canRedo: boolean;
   onZoomChange: (zoom: number) => void;
-  onToggleGrid: () => void;
-  onToggleRulers: () => void;
-  onToggleSnapGrid: () => void;
-  onToggleSnapGuides: () => void;
-  onAlign: (command: AlignmentCommand) => void;
+  onFitPage: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  onCopyTemplate: () => void;
   onPreview: () => void;
   onSave: () => void;
-  onReset: () => void;
 }): ReactElement {
   return createElement(
     "header",
@@ -818,88 +1282,226 @@ function TopToolbar({
     createElement(
       "div",
       { style: toolbarBrandGroupStyle },
-      createElement("div", { style: brandMarkStyle }, "T"),
+      createElement(
+        "div",
+        { style: brandMarkStyle },
+        createElement(ToolIcon, {
+          icon: CubeIcon,
+          style: brandMarkIconStyle,
+          size: 17,
+        }),
+      ),
       createElement("div", { style: brandNameStyle }, "Templara"),
+      createElement("span", { style: toolbarDividerStyle }),
       createElement("div", { style: templateTitleStyle }, templateName),
-      createElement("span", { style: statusPillStyle }, "Draft")
+      createElement("span", { style: statusPillStyle }, "Draft"),
     ),
     createElement(
       "div",
       { style: toolbarCenterStyle },
       createElement(
-        "div",
-        { style: toolbarClusterStyle },
-        createElement(ToolbarButton, { icon: Undo03Icon, title: "Undo", disabled: true, onClick: () => undefined, compact: true }),
-        createElement(ToolbarButton, { icon: Redo03Icon, title: "Redo", disabled: true, onClick: () => undefined, compact: true })
-      ),
-      createElement(
-        "div",
-        { style: toolbarClusterStyle },
-        createElement(
-          "select",
-          {
-            value: activePageId,
-            onChange: (event) => onSelectPage((event.currentTarget as HTMLSelectElement).value),
-            style: selectStyle,
-            "aria-label": "Active page"
-          },
-          pages.map((page) => createElement("option", { key: page.id, value: page.id }, page.name ?? page.id))
-        )
-      ),
-      createElement(
-        "div",
+        "nav",
         { style: toolbarClusterStyle },
         createElement(ToolbarButton, {
-          icon: MinusSignIcon,
-          title: "Zoom out",
-          onClick: () => onZoomChange(clampZoom(zoom - 0.1)),
-          compact: true
+          icon: Undo03Icon,
+          title: "Undo",
+          disabled: !canUndo,
+          onClick: onUndo,
+          compact: true,
         }),
-        createElement("span", { style: zoomLabelStyle }, `${Math.round(zoom * 100)}%`),
         createElement(ToolbarButton, {
-          icon: Add01Icon,
-          title: "Zoom in",
-          onClick: () => onZoomChange(clampZoom(zoom + 0.1)),
-          compact: true
-        })
+          icon: Redo03Icon,
+          title: "Redo",
+          disabled: !canRedo,
+          onClick: onRedo,
+          compact: true,
+        }),
       ),
-      createElement(
-        "div",
-        { style: toolbarClusterStyle },
-        createElement(ToggleButton, { icon: GridIcon, title: "Toggle grid", active: showGrid, onClick: onToggleGrid }),
-        createElement(ToggleButton, { icon: RulerIcon, title: "Toggle rulers", active: showRulers, onClick: onToggleRulers }),
-        createElement(ToggleButton, { icon: MagnetIcon, title: "Toggle snap to grid", active: snapToGrid, onClick: onToggleSnapGrid }),
-        createElement(ToggleButton, { icon: Target02Icon, title: "Toggle guides", active: snapToGuides, onClick: onToggleSnapGuides })
-      ),
-      selectedCount > 0
-        ? createElement(
-            "div",
-            { style: toolbarClusterStyle },
-            alignmentCommands.map((command) =>
-              createElement(ToolbarButton, {
-                key: command.id,
-                icon: command.icon,
-                title: command.title,
-                disabled: (command.id === "distribute-x" || command.id === "distribute-y") && selectedCount < 3,
-                onClick: () => onAlign(command.id),
-                compact: true
-              })
-            )
-          )
-        : null
+      createElement(ZoomControl, { zoom, onZoomChange, onFitPage }),
+      createElement(ToolbarButton, {
+        icon: Pan03Icon,
+        title: "Pan tool",
+        disabled: true,
+        onClick: () => undefined,
+        compact: true,
+      }),
     ),
     createElement(
       "div",
       { style: toolbarGroupStyle },
+      createElement(ToolbarButton, {
+        icon: Copy01Icon,
+        title: "Copy template JSON",
+        onClick: onCopyTemplate,
+        compact: true,
+      }),
       createElement(PreviewDropdown, { onPreview }),
-      createElement(MoreOptionsDropdown, { onReset }),
-      createElement(ToolbarButton, { label: "Save", title: "Save template", onClick: onSave, variant: "primary" })
-    )
+      createElement(ToolbarButton, {
+        label: "Save",
+        title: "Save template",
+        onClick: onSave,
+        variant: "primary",
+      }),
+    ),
   );
 }
 
-function PreviewDropdown({ onPreview }: { onPreview: () => void }): ReactElement {
+function ZoomControl({
+  zoom,
+  onZoomChange,
+  onFitPage,
+}: {
+  zoom: number;
+  onZoomChange: (zoom: number) => void;
+  onFitPage: () => void;
+}): ReactElement {
   const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const setPreset = (value: number): void => {
+    setOpen(false);
+    onZoomChange(clampZoom(value));
+  };
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handlePointerDown = (event: globalThis.PointerEvent): void => {
+      if (wrapRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
+
+  return createElement(
+    "div",
+    {
+      ref: wrapRef,
+      style: { ...dropdownWrapStyle, ...zoomDropdownWrapStyle },
+      title: "Zoom",
+    },
+    createElement(
+      "div",
+      { style: zoomControlStyle },
+      createElement(
+        "button",
+        {
+          type: "button",
+          title: "Zoom out",
+          onClick: () => onZoomChange(clampZoom(zoom - 0.1)),
+          style: zoomControlButtonStyle,
+        },
+        createElement(ToolIcon, {
+          icon: MinusSignIcon,
+          style: toolbarIconStyle,
+          size: 14,
+        }),
+      ),
+      createElement(
+        "button",
+        {
+          type: "button",
+          title: "Zoom level",
+          "aria-expanded": open,
+          onClick: () => setOpen((value) => !value),
+          style: zoomControlValueStyle,
+        },
+        createElement("span", null, `${Math.round(zoom * 100)}%`),
+        createElement(ToolIcon, {
+          icon: ChevronDownIcon,
+          style: toolbarIconStyle,
+          size: 12,
+        }),
+      ),
+      createElement(
+        "button",
+        {
+          type: "button",
+          title: "Zoom in",
+          onClick: () => onZoomChange(clampZoom(zoom + 0.1)),
+          style: zoomControlButtonStyle,
+        },
+        createElement(ToolIcon, {
+          icon: Add01Icon,
+          style: toolbarIconStyle,
+          size: 14,
+        }),
+      ),
+    ),
+    open
+      ? createElement(
+          "div",
+          { style: zoomDropdownStyle },
+          createElement(DropdownItem, {
+            label: "Fit page",
+            detail: "Scale canvas to viewport",
+            onClick: () => {
+              setOpen(false);
+              onFitPage();
+            },
+          }),
+          createElement(DropdownItem, {
+            label: "50%",
+            detail: "Half scale",
+            onClick: () => setPreset(0.5),
+          }),
+          createElement(DropdownItem, {
+            label: "75%",
+            detail: "Compact editing",
+            onClick: () => setPreset(0.75),
+          }),
+          createElement(DropdownItem, {
+            label: "100%",
+            detail: "Actual pixels",
+            onClick: () => setPreset(1),
+          }),
+          createElement(DropdownItem, {
+            label: "125%",
+            detail: "Close detail",
+            onClick: () => setPreset(1.25),
+          }),
+          createElement(DropdownItem, {
+            label: "150%",
+            detail: "Inspect layout",
+            onClick: () => setPreset(1.5),
+          }),
+        )
+      : null,
+  );
+}
+
+function PreviewDropdown({
+  onPreview,
+}: {
+  onPreview: () => void;
+}): ReactElement {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handlePointerDown = (event: globalThis.PointerEvent): void => {
+      if (wrapRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
 
   const runPreview = (): void => {
     setOpen(false);
@@ -908,73 +1510,61 @@ function PreviewDropdown({ onPreview }: { onPreview: () => void }): ReactElement
 
   return createElement(
     "div",
-    { style: dropdownWrapStyle },
+    { ref: wrapRef, style: dropdownWrapStyle },
     createElement(
-      "div",
-      { style: splitButtonStyle },
-      createElement(
-        "button",
-        {
-          type: "button",
-          title: "Preview rendered document",
-          onClick: runPreview,
-          style: previewMainButtonStyle
-        },
-        createElement(ToolIcon, { icon: ViewIcon, style: toolbarIconStyle, size: 16 }),
-        createElement("span", null, "Preview")
-      ),
-      createElement(
-        "button",
-        {
-          type: "button",
-          title: "Preview options",
-          onClick: () => setOpen((value) => !value),
-          style: previewChevronButtonStyle
-        },
-        createElement(ToolIcon, { icon: ChevronDownIcon, style: toolbarIconStyle, size: 14 })
-      )
+      "button",
+      {
+        type: "button",
+        title: "Preview options",
+        "aria-expanded": open,
+        onClick: () => setOpen((value) => !value),
+        style: previewButtonStyle,
+      },
+      createElement(ToolIcon, {
+        icon: ViewIcon,
+        style: toolbarIconStyle,
+        size: 16,
+      }),
+      createElement("span", null, "Preview"),
+      createElement(ToolIcon, {
+        icon: ChevronDownIcon,
+        style: toolbarIconStyle,
+        size: 13,
+      }),
     ),
     open
       ? createElement(
           "div",
           { style: toolbarDropdownStyle },
-          createElement(DropdownItem, { label: "Preview with sample data", detail: "Open rendered preview", onClick: runPreview }),
-          createElement(DropdownItem, { label: "Preview with large data", detail: "Stress repeat pagination", onClick: runPreview }),
-          createElement(DropdownItem, { label: "Export PDF", detail: "Preview first, export later", disabled: true, onClick: () => undefined }),
-          createElement(DropdownItem, { label: "Export PNG / HTML", detail: "Coming soon", disabled: true, onClick: () => undefined }),
-          createElement(DropdownItem, { label: "Render diagnostics", detail: "Use preview debug output", onClick: runPreview })
-        )
-      : null
-  );
-}
-
-function MoreOptionsDropdown({ onReset }: { onReset: () => void }): ReactElement {
-  const [open, setOpen] = useState(false);
-
-  return createElement(
-    "div",
-    { style: dropdownWrapStyle },
-    createElement(ToolbarButton, {
-      icon: MoreHorizontalIcon,
-      title: "More options",
-      onClick: () => setOpen((value) => !value),
-      compact: true,
-      variant: "ghost"
-    }),
-    open
-      ? createElement(
-          "div",
-          { style: toolbarDropdownStyle },
           createElement(DropdownItem, {
-            label: "Reset template edits",
-            detail: "Restore the initial template",
-            onClick: () => {
-              setOpen(false);
-              onReset();
-            }
-          })
+            label: "Preview with sample data",
+            detail: "Open rendered preview",
+            onClick: runPreview,
+          }),
+          createElement(DropdownItem, {
+            label: "Preview with large data",
+            detail: "Stress repeat pagination",
+            onClick: runPreview,
+          }),
+          createElement(DropdownItem, {
+            label: "Export PDF",
+            detail: "Preview first, export later",
+            disabled: true,
+            onClick: () => undefined,
+          }),
+          createElement(DropdownItem, {
+            label: "Export PNG / HTML",
+            detail: "Coming soon",
+            disabled: true,
+            onClick: () => undefined,
+          }),
+          createElement(DropdownItem, {
+            label: "Render diagnostics",
+            detail: "Use preview debug output",
+            onClick: runPreview,
+          }),
         )
-      : null
+      : null,
   );
 }
 
@@ -982,7 +1572,7 @@ function DropdownItem({
   label,
   detail,
   disabled,
-  onClick
+  onClick,
 }: {
   label: string;
   detail: string;
@@ -993,67 +1583,58 @@ function DropdownItem({
     "button",
     {
       type: "button",
+      title: `${label} - ${detail}`,
       disabled,
       onClick,
       style: {
         ...dropdownItemStyle,
         opacity: disabled ? 0.48 : 1,
-        cursor: disabled ? "not-allowed" : "pointer"
-      }
+        cursor: disabled ? "not-allowed" : "pointer",
+      },
     },
     createElement("span", { style: dropdownItemLabelStyle }, label),
-    createElement("span", { style: dropdownItemDetailStyle }, detail)
+    createElement("span", { style: dropdownItemDetailStyle }, detail),
   );
 }
 
 function EditorCanvas({
   page,
+  pageInspectorDraft,
   zoom,
   showGrid,
   showRulers,
-  snapToGuides,
   selectedNodeIds,
   activeGuides,
   verticalGuides,
   horizontalGuides,
-  pageIndex,
-  pageCount,
   boardRef,
-  onZoomChange,
-  onFitPage,
-  onToggleGrid,
-  onToggleRulers,
-  onToggleGuides,
-  onPreviousPage,
-  onNextPage,
   onNodePointerDown,
   onPagePointerDown,
-  onStartGuideDrag
+  onBindingDrop,
+  onStartGuideDrag,
 }: {
   page: ReturnType<typeof buildEditorPageModel>;
+  pageInspectorDraft: ReturnType<typeof resolvePageInspectorDraft>;
   zoom: number;
   showGrid: boolean;
   showRulers: boolean;
-  snapToGuides: boolean;
   selectedNodeIds: string[];
   activeGuides: ActiveGuide[];
   verticalGuides: number[];
   horizontalGuides: number[];
-  pageIndex: number;
-  pageCount: number;
   boardRef: React.RefObject<HTMLDivElement | null>;
-  onZoomChange: (zoom: number) => void;
-  onFitPage: () => void;
-  onToggleGrid: () => void;
-  onToggleRulers: () => void;
-  onToggleGuides: () => void;
-  onPreviousPage: () => void;
-  onNextPage: () => void;
-  onNodePointerDown: (event: PointerEvent<HTMLElement>, node: EditorRenderNode) => void;
+  onNodePointerDown: (
+    event: PointerEvent<HTMLElement>,
+    node: EditorRenderNode,
+  ) => void;
   onPagePointerDown: (event: PointerEvent<HTMLDivElement>) => void;
+  onBindingDrop: (event: DragEvent<HTMLDivElement>, fieldPath: string) => void;
   onStartGuideDrag: (axis: GuideAxis, index: number) => void;
 }): ReactElement {
   const rulerSize = showRulers ? RULER_SIZE : 0;
+  const margin = page.margin;
+  const safeAreaPx = Math.round((pageInspectorDraft.safeAreaMm * 96) / 25.4);
+  const bleedPx = Math.round((pageInspectorDraft.bleedMm * 96) / 25.4);
 
   return createElement(
     "section",
@@ -1065,14 +1646,24 @@ function EditorCanvas({
         style: {
           ...canvasBoardStyle,
           width: rulerSize + page.size.width * zoom,
-          height: rulerSize + page.size.height * zoom
-        }
+          height: rulerSize + page.size.height * zoom,
+        },
       },
       showRulers
         ? [
             createElement("div", { key: "corner", style: rulerCornerStyle }),
-            createElement(Ruler, { key: "top-ruler", axis: "x", length: page.size.width, zoom }),
-            createElement(Ruler, { key: "left-ruler", axis: "y", length: page.size.height, zoom })
+            createElement(Ruler, {
+              key: "top-ruler",
+              axis: "x",
+              length: page.size.width,
+              zoom,
+            }),
+            createElement(Ruler, {
+              key: "left-ruler",
+              axis: "y",
+              length: page.size.height,
+              zoom,
+            }),
           ]
         : null,
       createElement(
@@ -1083,44 +1674,87 @@ function EditorCanvas({
             left: rulerSize,
             top: rulerSize,
             width: page.size.width * zoom,
-            height: page.size.height * zoom
-          }
+            height: page.size.height * zoom,
+          },
         },
         createElement("div", {
           style: {
             ...pageBadgeStyle,
             left: 0,
-            top: -24
+            top: -24,
           },
-          children: `${page.name} / ${page.size.width} x ${page.size.height}`
+          children: `${page.name} / ${page.size.width} x ${page.size.height}`,
         }),
         createElement(
           "div",
           {
             "data-templara-editor-page-id": page.id,
+            onDragOver: (event: DragEvent<HTMLDivElement>) => {
+              if (event.dataTransfer.types.includes(BINDING_DRAG_TYPE)) {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "copy";
+              }
+            },
+            onDrop: (event: DragEvent<HTMLDivElement>) => {
+              const fieldPath = event.dataTransfer.getData(BINDING_DRAG_TYPE);
+
+              if (!fieldPath) {
+                return;
+              }
+
+              event.preventDefault();
+              event.stopPropagation();
+              onBindingDrop(event, fieldPath);
+            },
             onPointerDown: onPagePointerDown,
             style: {
               ...pageCanvasStyle,
               width: page.size.width,
               height: page.size.height,
               transform: `scale(${zoom})`,
+              backgroundColor: pageInspectorDraft.backgroundColor,
+              boxShadow: pageInspectorDraft.pageShadow
+                ? pageCanvasStyle.boxShadow
+                : "none",
               backgroundImage: showGrid ? gridBackgroundImage : undefined,
-              backgroundSize: showGrid ? `${GRID_SIZE}px ${GRID_SIZE}px` : undefined
-            }
+              backgroundSize: showGrid
+                ? `${GRID_SIZE}px ${GRID_SIZE}px`
+                : undefined,
+            },
           },
-          page.margin ? createElement(MarginGuideOverlay, { margin: page.margin, pageSize: page.size }) : null,
+          pageInspectorDraft.bleedEnabled && bleedPx > 0
+            ? createElement(BleedOverlay, { bleedPx, pageSize: page.size })
+            : null,
+          margin && pageInspectorDraft.showPrintableArea
+            ? createElement(PrintableAreaOverlay, {
+                margin,
+                pageSize: page.size,
+              })
+            : null,
+          margin && pageInspectorDraft.showMarginGuides
+            ? createElement(MarginGuideOverlay, { margin, pageSize: page.size })
+            : null,
+          margin && pageInspectorDraft.safeAreaEnabled && safeAreaPx > 0
+            ? createElement(SafeAreaOverlay, {
+                margin,
+                safeAreaPx,
+                pageSize: page.size,
+              })
+            : null,
           page.nodes.map((node) =>
             createElement(EditorNodeView, {
               key: node.id,
               node,
               selected: selectedNodeIds.includes(node.sourceNodeId),
-              onPointerDown: onNodePointerDown
-            })
+              onPointerDown: onNodePointerDown,
+            }),
           ),
           createElement(SelectionOverlay, {
-            nodes: page.nodes.filter((node) => selectedNodeIds.includes(node.sourceNodeId))
-          })
-        )
+            nodes: page.nodes.filter((node) =>
+              selectedNodeIds.includes(node.sourceNodeId),
+            ),
+          }),
+        ),
       ),
       verticalGuides.map((guide, index) =>
         createElement(GuideLine, {
@@ -1130,8 +1764,8 @@ function EditorCanvas({
           zoom,
           rulerSize,
           length: page.size.height,
-          onPointerDown: () => onStartGuideDrag("x", index)
-        })
+          onPointerDown: () => onStartGuideDrag("x", index),
+        }),
       ),
       horizontalGuides.map((guide, index) =>
         createElement(GuideLine, {
@@ -1141,8 +1775,8 @@ function EditorCanvas({
           zoom,
           rulerSize,
           length: page.size.width,
-          onPointerDown: () => onStartGuideDrag("y", index)
-        })
+          onPointerDown: () => onStartGuideDrag("y", index),
+        }),
       ),
       activeGuides.map((guide, index) =>
         createElement(GuideLine, {
@@ -1152,118 +1786,16 @@ function EditorCanvas({
           zoom,
           rulerSize,
           length: guide.axis === "x" ? page.size.height : page.size.width,
-          active: true
-        })
-      )
+          active: true,
+        }),
+      ),
     ),
-    createElement(CanvasDock, {
-      zoom,
-      showGrid,
-      showRulers,
-      snapToGuides,
-      onZoomChange,
-      onFitPage,
-      onToggleGrid,
-      onToggleRulers,
-      onToggleGuides
-    }),
-    createElement(PageSwitcherDock, {
-      pageName: page.name,
-      pageIndex,
-      pageCount,
-      onPreviousPage,
-      onNextPage
-    })
-  );
-}
-
-function CanvasDock({
-  zoom,
-  showGrid,
-  showRulers,
-  snapToGuides,
-  onZoomChange,
-  onFitPage,
-  onToggleGrid,
-  onToggleRulers,
-  onToggleGuides
-}: {
-  zoom: number;
-  showGrid: boolean;
-  showRulers: boolean;
-  snapToGuides: boolean;
-  onZoomChange: (zoom: number) => void;
-  onFitPage: () => void;
-  onToggleGrid: () => void;
-  onToggleRulers: () => void;
-  onToggleGuides: () => void;
-}): ReactElement {
-  return createElement(
-    "div",
-    { style: canvasDockStyle },
-    createElement(ToolbarButton, {
-      icon: MinusSignIcon,
-      title: "Zoom out",
-      onClick: () => onZoomChange(clampZoom(zoom - 0.1)),
-      compact: true
-    }),
-    createElement("span", { style: canvasDockZoomStyle }, `${Math.round(zoom * 100)}%`),
-    createElement(ToolbarButton, {
-      icon: Add01Icon,
-      title: "Zoom in",
-      onClick: () => onZoomChange(clampZoom(zoom + 0.1)),
-      compact: true
-    }),
-    createElement("span", { style: dockSeparatorStyle }),
-    createElement(ToolbarButton, { icon: Maximize01Icon, title: "Fit to page", onClick: onFitPage, compact: true }),
-    createElement(ToggleButton, { icon: GridIcon, title: "Toggle grid", active: showGrid, onClick: onToggleGrid }),
-    createElement(ToggleButton, { icon: RulerIcon, title: "Toggle rulers", active: showRulers, onClick: onToggleRulers }),
-    createElement(ToggleButton, { icon: Target02Icon, title: "Toggle guides", active: snapToGuides, onClick: onToggleGuides })
-  );
-}
-
-function PageSwitcherDock({
-  pageName,
-  pageIndex,
-  pageCount,
-  onPreviousPage,
-  onNextPage
-}: {
-  pageName: string;
-  pageIndex: number;
-  pageCount: number;
-  onPreviousPage: () => void;
-  onNextPage: () => void;
-}): ReactElement {
-  return createElement(
-    "div",
-    { style: canvasPageControlStyle },
-    createElement(ToolbarButton, {
-      icon: ChevronLeftIcon,
-      title: "Previous page",
-      disabled: pageIndex <= 0,
-      onClick: onPreviousPage,
-      compact: true
-    }),
-    createElement(
-      "span",
-      { style: canvasPageControlLabelStyle },
-      `${pageName} · Page ${pageIndex + 1} of ${Math.max(1, pageCount)}`
-    ),
-    createElement(ToolbarButton, {
-      icon: ChevronRightIcon,
-      title: "Next page",
-      disabled: pageIndex >= pageCount - 1,
-      onClick: onNextPage,
-      compact: true
-    }),
-    createElement(ToolbarButton, { icon: Add01Icon, title: "Add page", disabled: true, onClick: () => undefined, compact: true })
   );
 }
 
 function MarginGuideOverlay({
   margin,
-  pageSize
+  pageSize,
 }: {
   margin: NonNullable<ReturnType<typeof buildEditorPageModel>["margin"]>;
   pageSize: ReturnType<typeof buildEditorPageModel>["size"];
@@ -1278,12 +1810,97 @@ function MarginGuideOverlay({
       height: pageSize.height - margin.top - margin.bottom,
       border: "1px dashed rgba(37, 99, 235, 0.32)",
       pointerEvents: "none",
-      zIndex: 1
-    }
+      zIndex: 1,
+    },
   });
 }
 
-function SelectionOverlay({ nodes }: { nodes: EditorRenderNode[] }): ReactElement | null {
+function PrintableAreaOverlay({
+  margin,
+  pageSize,
+}: {
+  margin: NonNullable<ReturnType<typeof buildEditorPageModel>["margin"]>;
+  pageSize: ReturnType<typeof buildEditorPageModel>["size"];
+}): ReactElement {
+  return createElement("div", {
+    "data-templara-printable-area": "true",
+    style: {
+      position: "absolute",
+      left: margin.left,
+      top: margin.top,
+      width: pageSize.width - margin.left - margin.right,
+      height: pageSize.height - margin.top - margin.bottom,
+      background: "rgba(99, 102, 241, 0.04)",
+      pointerEvents: "none",
+      zIndex: 0,
+    },
+  });
+}
+
+function SafeAreaOverlay({
+  margin,
+  safeAreaPx,
+  pageSize,
+}: {
+  margin: NonNullable<ReturnType<typeof buildEditorPageModel>["margin"]>;
+  safeAreaPx: number;
+  pageSize: ReturnType<typeof buildEditorPageModel>["size"];
+}): ReactElement {
+  const left = margin.left + safeAreaPx;
+  const top = margin.top + safeAreaPx;
+  const width = Math.max(
+    0,
+    pageSize.width - margin.left - margin.right - safeAreaPx * 2,
+  );
+  const height = Math.max(
+    0,
+    pageSize.height - margin.top - margin.bottom - safeAreaPx * 2,
+  );
+
+  return createElement("div", {
+    "data-templara-safe-area": "true",
+    style: {
+      position: "absolute",
+      left,
+      top,
+      width,
+      height,
+      border: "1px solid rgba(16, 185, 129, 0.35)",
+      background: "rgba(16, 185, 129, 0.05)",
+      pointerEvents: "none",
+      zIndex: 2,
+    },
+  });
+}
+
+function BleedOverlay({
+  bleedPx,
+  pageSize,
+}: {
+  bleedPx: number;
+  pageSize: ReturnType<typeof buildEditorPageModel>["size"];
+}): ReactElement {
+  return createElement("div", {
+    "data-templara-bleed": "true",
+    style: {
+      position: "absolute",
+      left: -bleedPx,
+      top: -bleedPx,
+      width: pageSize.width + bleedPx * 2,
+      height: pageSize.height + bleedPx * 2,
+      border: `${bleedPx}px solid rgba(244, 63, 94, 0.08)`,
+      boxSizing: "border-box",
+      pointerEvents: "none",
+      zIndex: 0,
+    },
+  });
+}
+
+function SelectionOverlay({
+  nodes,
+}: {
+  nodes: EditorRenderNode[];
+}): ReactElement | null {
   if (nodes.length === 0) {
     return null;
   }
@@ -1302,8 +1919,8 @@ function SelectionOverlay({ nodes }: { nodes: EditorRenderNode[] }): ReactElemen
         height: bounds.height,
         border: nodes.length > 1 ? "1px solid #2563eb" : "none",
         pointerEvents: "none",
-        zIndex: 20
-      }
+        zIndex: 20,
+      },
     },
     ["nw", "ne", "sw", "se"].map((corner) =>
       createElement("span", {
@@ -1311,21 +1928,24 @@ function SelectionOverlay({ nodes }: { nodes: EditorRenderNode[] }): ReactElemen
         style: {
           ...selectionHandleStyle,
           ...(corner.includes("n") ? { top: -4 } : { bottom: -4 }),
-          ...(corner.includes("w") ? { left: -4 } : { right: -4 })
-        }
-      })
-    )
+          ...(corner.includes("w") ? { left: -4 } : { right: -4 }),
+        },
+      }),
+    ),
   );
 }
 
 function EditorNodeView({
   node,
   selected,
-  onPointerDown
+  onPointerDown,
 }: {
   node: EditorRenderNode;
   selected: boolean;
-  onPointerDown: (event: PointerEvent<HTMLElement>, node: EditorRenderNode) => void;
+  onPointerDown: (
+    event: PointerEvent<HTMLElement>,
+    node: EditorRenderNode,
+  ) => void;
 }): ReactElement {
   const baseStyle: CSSProperties = {
     position: "absolute",
@@ -1337,14 +1957,15 @@ function EditorNodeView({
     outline: selected ? "2px solid #2563eb" : undefined,
     outlineOffset: selected ? 2 : undefined,
     cursor: "move",
-    userSelect: "none"
+    userSelect: "none",
   };
   const nodeProps = {
     "data-templara-editor-node-id": node.id,
     "data-templara-source-node-id": node.sourceNodeId,
     "data-templara-node-type": node.nodeType,
     "data-templara-selected": selected ? "true" : undefined,
-    onPointerDown: (event: PointerEvent<HTMLElement>) => onPointerDown(event, node)
+    onPointerDown: (event: PointerEvent<HTMLElement>) =>
+      onPointerDown(event, node),
   };
 
   if (node.visual.kind === "text") {
@@ -1359,9 +1980,9 @@ function EditorNodeView({
         color: node.visual.style.color,
         textAlign: node.visual.style.align,
         letterSpacing: node.visual.style.letterSpacing,
-        whiteSpace: "pre-wrap"
+        whiteSpace: "pre-wrap",
       },
-      children: node.visual.text
+      children: node.visual.text,
     });
   }
 
@@ -1371,15 +1992,22 @@ function EditorNodeView({
       style: {
         ...baseStyle,
         background: node.visual.fill,
-        border: node.visual.stroke ? `${node.visual.strokeWidth ?? 1}px solid ${node.visual.stroke}` : undefined,
-        borderRadius: node.visual.shape === "ellipse" ? "999px" : node.visual.radius
-      }
+        border: node.visual.stroke
+          ? `${node.visual.strokeWidth ?? 1}px solid ${node.visual.stroke}`
+          : undefined,
+        borderRadius:
+          node.visual.shape === "ellipse" ? "999px" : node.visual.radius,
+      },
     });
   }
 
   if (node.visual.kind === "image") {
     if (!node.visual.src && node.visual.placeholder) {
-      return createElement(PlaceholderBox, { nodeProps, style: baseStyle, label: node.visual.placeholder });
+      return createElement(PlaceholderBox, {
+        nodeProps,
+        style: baseStyle,
+        label: node.visual.placeholder,
+      });
     }
 
     return createElement("img", {
@@ -1388,19 +2016,36 @@ function EditorNodeView({
       alt: node.visual.alt ?? "",
       style: {
         ...baseStyle,
-        objectFit: node.visual.fit ?? "contain"
-      }
+        objectFit: node.visual.fit ?? "contain",
+      },
     });
   }
 
   if (node.visual.kind === "code") {
-    return createElement(PlaceholderBox, { nodeProps, style: baseStyle, label: node.visual.placeholder ?? node.visual.value });
+    return createElement(PlaceholderBox, {
+      nodeProps,
+      style: baseStyle,
+      label: node.visual.placeholder ?? node.visual.value,
+    });
   }
 
-  return createElement(ContainerBox, { nodeProps, selected, style: baseStyle, visual: node.visual });
+  return createElement(ContainerBox, {
+    nodeProps,
+    selected,
+    style: baseStyle,
+    visual: node.visual,
+  });
 }
 
-function PlaceholderBox({ nodeProps, style, label }: { nodeProps: Record<string, unknown>; style: CSSProperties; label: string }): ReactElement {
+function PlaceholderBox({
+  nodeProps,
+  style,
+  label,
+}: {
+  nodeProps: Record<string, unknown>;
+  style: CSSProperties;
+  label: string;
+}): ReactElement {
   return createElement("div", {
     ...nodeProps,
     style: {
@@ -1412,9 +2057,9 @@ function PlaceholderBox({ nodeProps, style, label }: { nodeProps: Record<string,
       color: "#475569",
       font: `10px/1.3 ${UI_MONO_FONT_FAMILY}`,
       textAlign: "center",
-      padding: 4
+      padding: 4,
     },
-    children: label
+    children: label,
   });
 }
 
@@ -1422,7 +2067,7 @@ function ContainerBox({
   nodeProps,
   selected,
   style,
-  visual
+  visual,
 }: {
   nodeProps: Record<string, unknown>;
   selected: boolean;
@@ -1431,7 +2076,8 @@ function ContainerBox({
 }): ReactElement {
   const color = containerToneColor(visual.tone);
   const showLabel = selected || visual.tone === "repeat";
-  const subtleColor = visual.tone === "repeat" ? color : "rgba(100, 116, 139, 0.28)";
+  const subtleColor =
+    visual.tone === "repeat" ? color : "rgba(100, 116, 139, 0.28)";
 
   return createElement(
     "div",
@@ -1440,9 +2086,10 @@ function ContainerBox({
       style: {
         ...style,
         border: `1px dashed ${selected ? color : subtleColor}`,
-        background: visual.tone === "repeat" ? "rgba(124, 58, 237, 0.04)" : "transparent",
-        pointerEvents: "auto"
-      }
+        background:
+          visual.tone === "repeat" ? "rgba(124, 58, 237, 0.04)" : "transparent",
+        pointerEvents: "auto",
+      },
     },
     showLabel
       ? createElement("span", {
@@ -1455,39 +2102,57 @@ function ContainerBox({
             background: color,
             color: "#ffffff",
             font: `10px/1.2 ${UI_MONO_FONT_FAMILY}`,
-            whiteSpace: "nowrap"
+            whiteSpace: "nowrap",
           },
-          children: visual.label
+          children: visual.label,
         })
       : null,
     visual.tone === "repeat"
       ? createElement(
           "div",
           {
-            style: repeatPlaceholderStyle
+            style: repeatPlaceholderStyle,
           },
           createElement("strong", null, "This is the repeat template."),
-          createElement("span", null, "Full repeated output appears in Preview.")
+          createElement(
+            "span",
+            null,
+            "Full repeated output appears in Preview.",
+          ),
         )
-      : null
+      : null,
   );
 }
 
-function Ruler({ axis, length, zoom }: { axis: GuideAxis; length: number; zoom: number }): ReactElement {
-  const ticks = Array.from({ length: Math.floor(length / 100) + 1 }, (_, index) => index * 100);
+function Ruler({
+  axis,
+  length,
+  zoom,
+}: {
+  axis: GuideAxis;
+  length: number;
+  zoom: number;
+}): ReactElement {
+  const ticks = Array.from(
+    { length: Math.floor(length / 100) + 1 },
+    (_, index) => index * 100,
+  );
 
   return createElement(
     "div",
     {
-      style: axis === "x" ? topRulerStyle : leftRulerStyle
+      style: axis === "x" ? topRulerStyle : leftRulerStyle,
     },
     ticks.map((tick) =>
       createElement("span", {
         key: tick,
-        style: axis === "x" ? { ...topRulerTickStyle, left: tick * zoom } : { ...leftRulerTickStyle, top: tick * zoom },
-        children: tick
-      })
-    )
+        style:
+          axis === "x"
+            ? { ...topRulerTickStyle, left: tick * zoom }
+            : { ...leftRulerTickStyle, top: tick * zoom },
+        children: tick,
+      }),
+    ),
   );
 }
 
@@ -1498,7 +2163,7 @@ function GuideLine({
   rulerSize,
   length,
   active = false,
-  onPointerDown
+  onPointerDown,
 }: {
   axis: GuideAxis;
   value: number;
@@ -1522,15 +2187,15 @@ function GuideLine({
             left: rulerSize + value * zoom,
             top: rulerSize,
             height: length * zoom,
-            background: active ? "#2563eb" : "#ef4444"
+            background: active ? "#2563eb" : "#ef4444",
           }
         : {
             ...horizontalGuideStyle,
             left: rulerSize,
             top: rulerSize + value * zoom,
             width: length * zoom,
-            background: active ? "#2563eb" : "#ef4444"
-          }
+            background: active ? "#2563eb" : "#ef4444",
+          },
   });
 }
 
@@ -1540,7 +2205,7 @@ function NodeLayerList({
   activePageId,
   selectedNodeIds,
   onSelectPage,
-  onSelect
+  onSelect,
 }: {
   pages: DocumentTemplate["pages"];
   items: EditorNodeItem[];
@@ -1558,7 +2223,11 @@ function NodeLayerList({
       "header",
       { style: layersHeaderStyle },
       createElement("h2", { style: panelTitleStyle }, "Layers"),
-      createElement("button", { type: "button", title: "Add layer", style: layersAddButtonStyle }, "+")
+      createElement(
+        "button",
+        { type: "button", title: "Add layer", style: layersAddButtonStyle },
+        "+",
+      ),
     ),
     createElement(
       "div",
@@ -1567,12 +2236,14 @@ function NodeLayerList({
         createElement(LayerTreeRowView, {
           key: row.key,
           row,
-          selected: row.nodeId ? selectedNodeIds.includes(row.nodeId) : row.pageId === activePageId && row.kind === "page",
+          selected: row.nodeId
+            ? selectedNodeIds.includes(row.nodeId)
+            : row.pageId === activePageId && row.kind === "page",
           onSelect,
-          onSelectPage
-        })
-      )
-    )
+          onSelectPage,
+        }),
+      ),
+    ),
   );
 }
 
@@ -1580,7 +2251,7 @@ function LayerTreeRowView({
   row,
   selected,
   onSelect,
-  onSelectPage
+  onSelectPage,
 }: {
   row: LayerTreeRow;
   selected: boolean;
@@ -1604,29 +2275,53 @@ function LayerTreeRowView({
       style: {
         ...layerTreeRowStyle,
         paddingLeft: 8 + row.depth * 18,
-        background: selected && row.kind !== "page" ? "#dbeafe" : selected && row.kind === "page" ? "#eff6ff" : "transparent",
-        borderColor: selected ? "#93c5fd" : "transparent",
-        fontWeight: row.kind === "node" ? 500 : 700
-      }
+        background: selected ? UI_SELECTION_BG : "transparent",
+        boxShadow: selected ? UI_SELECTION_RING : "none",
+        fontWeight: row.kind === "node" ? 500 : 700,
+      },
     },
     row.kind === "node"
       ? createElement("span", { style: layerTreeCaretStyle })
-      : createElement(SidebarIcon, { src: sidebarIcons.caret, alt: "", style: layerTreeCaretStyle }),
-    createElement(SidebarIcon, { src: row.iconSrc, alt: "", style: layerTreeIconStyle }),
-    createElement("span", { style: layerTreeLabelStyle }, row.label)
+      : createElement(SidebarIcon, {
+          src: sidebarIcons.caret,
+          alt: "",
+          style: layerTreeCaretStyle,
+        }),
+    createElement(SidebarIcon, {
+      src: row.iconSrc,
+      alt: "",
+      style: layerTreeIconStyle,
+    }),
+    createElement("span", { style: layerTreeLabelStyle }, row.label),
   );
 }
 
-function SidebarIcon({ src, alt, style }: { src: string; alt: string; style: CSSProperties }): ReactElement {
+function SidebarIcon({
+  src,
+  alt,
+  style,
+}: {
+  src: string;
+  alt: string;
+  style: CSSProperties;
+}): ReactElement {
   return createElement("img", {
     src,
     alt,
     "aria-hidden": alt === "" ? true : undefined,
-    style
+    style,
   });
 }
 
-function ToolIcon({ icon, style, size }: { icon: IconSvgElement; style: CSSProperties; size: number }): ReactElement {
+function ToolIcon({
+  icon,
+  style,
+  size,
+}: {
+  icon: IconSvgElement;
+  style: CSSProperties;
+  size: number;
+}): ReactElement {
   return createElement(
     "span",
     { style, "aria-hidden": true },
@@ -1634,12 +2329,16 @@ function ToolIcon({ icon, style, size }: { icon: IconSvgElement; style: CSSPrope
       icon,
       size,
       strokeWidth: 1.8,
-      color: "currentColor"
-    })
+      color: "currentColor",
+    }),
   );
 }
 
-function buildLayerTreeRows(pages: DocumentTemplate["pages"], activePageId: string, items: EditorNodeItem[]): LayerTreeRow[] {
+function buildLayerTreeRows(
+  pages: DocumentTemplate["pages"],
+  activePageId: string,
+  items: EditorNodeItem[],
+): LayerTreeRow[] {
   const activePage = pages.find((page) => page.id === activePageId) ?? pages[0];
   const itemById = new Map(items.map((item) => [item.id, item]));
   const rows: LayerTreeRow[] = [];
@@ -1651,20 +2350,34 @@ function buildLayerTreeRows(pages: DocumentTemplate["pages"], activePageId: stri
       depth: 0,
       kind: "page",
       iconSrc: sidebarIcons.page,
-      pageId: activePage.id
+      pageId: activePage.id,
     });
   }
 
-  const hasShipmentBolNodes = itemById.has("handling-units-repeat") && itemById.has("bol-title");
+  const hasShipmentBolNodes =
+    itemById.has("handling-units-repeat") && itemById.has("bol-title");
+  const hasInvoiceNodes =
+    itemById.has("invoice-items-repeat") && itemById.has("invoice-title");
 
-  if (!hasShipmentBolNodes) {
+  if (!hasShipmentBolNodes && !hasInvoiceNodes) {
     return rows.concat(buildGenericLayerRows(items));
   }
 
   const addSection = (key: string, label: string, depth: number): void => {
-    rows.push({ key, label, depth, kind: "section", iconSrc: sidebarIcons.frame });
+    rows.push({
+      key,
+      label,
+      depth,
+      kind: "section",
+      iconSrc: sidebarIcons.frame,
+    });
   };
-  const addNode = (nodeId: string, label: string, depth: number, iconSrc?: string): void => {
+  const addNode = (
+    nodeId: string,
+    label: string,
+    depth: number,
+    iconSrc?: string,
+  ): void => {
     if (!itemById.has(nodeId)) {
       return;
     }
@@ -1675,9 +2388,53 @@ function buildLayerTreeRows(pages: DocumentTemplate["pages"], activePageId: stri
       depth,
       kind: "node",
       iconSrc: iconSrc ?? nodeIcon(itemById.get(nodeId)?.type),
-      nodeId
+      nodeId,
     });
   };
+
+  if (hasInvoiceNodes) {
+    addSection("section-invoice-header", "Header", 1);
+    addNode("invoice-business-name", "Business Name", 2, sidebarIcons.text);
+    addNode("invoice-title", "Title (Invoice)", 2, sidebarIcons.text);
+    addNode("invoice-number", "Invoice Number", 2, sidebarIcons.text);
+    addNode("invoice-number-barcode", "Barcode", 2, sidebarIcons.barcode);
+
+    addSection("section-invoice-parties", "Parties", 1);
+    addNode("bill-to-card", "Bill To", 2, sidebarIcons.frame);
+    addNode("customer-name", "Customer", 2, sidebarIcons.text);
+    addNode("ship-to-card", "Ship To", 2, sidebarIcons.frame);
+    addNode("ship-to-name", "Delivery Name", 2, sidebarIcons.text);
+    addNode("invoice-meta-card", "Invoice Details", 2, sidebarIcons.frame);
+
+    addSection("section-invoice-items", "Invoice Items", 1);
+    addNode("invoice-items-header", "Table Header", 2, sidebarIcons.table);
+    addNode("invoice-items-repeat", "Repeat: Items", 2, sidebarIcons.layout);
+    rows.push({
+      key: "section-invoice-row-template",
+      label: "Row Template",
+      depth: 3,
+      kind: "section",
+      iconSrc: sidebarIcons.frame,
+    });
+    addNode("invoice-item-description", "Description", 4, sidebarIcons.text);
+    addNode("invoice-item-qty", "Quantity", 4, sidebarIcons.text);
+    addNode("invoice-item-rate", "Unit Price", 4, sidebarIcons.text);
+    addNode("invoice-item-total", "Line Total", 4, sidebarIcons.text);
+
+    addSection("section-invoice-summary", "Summary", 1);
+    addNode("invoice-notes-box", "Notes Box", 2, sidebarIcons.frame);
+    addNode("invoice-totals-box", "Totals Box", 2, sidebarIcons.frame);
+    addNode("invoice-subtotal", "Subtotal", 2, sidebarIcons.text);
+    addNode("invoice-tax", "Tax", 2, sidebarIcons.text);
+    addNode("invoice-balance", "Balance Due", 2, sidebarIcons.text);
+
+    addSection("section-invoice-footer", "Footer", 1);
+    addNode("payment-qr", "Payment QR", 2, sidebarIcons.qr);
+    addNode("payment-url", "Payment URL", 2, sidebarIcons.text);
+    addNode("thank-you", "Thank You", 2, sidebarIcons.text);
+
+    return rows;
+  }
 
   addSection("section-header", "Header", 1);
   addNode("business-name", "Business Name", 2, sidebarIcons.text);
@@ -1699,7 +2456,13 @@ function buildLayerTreeRows(pages: DocumentTemplate["pages"], activePageId: stri
   addSection("section-handling-units", "Handling Units Table", 1);
   addNode("freight-header", "Table Header", 2, sidebarIcons.table);
   addNode("handling-units-repeat", "Repeat: Items", 2, sidebarIcons.layout);
-  rows.push({ key: "section-row-template", label: "Row Template", depth: 3, kind: "section", iconSrc: sidebarIcons.frame });
+  rows.push({
+    key: "section-row-template",
+    label: "Row Template",
+    depth: 3,
+    kind: "section",
+    iconSrc: sidebarIcons.frame,
+  });
   addNode("unit-pieces", "Pieces", 4, sidebarIcons.text);
   addNode("unit-type", "Type", 4, sidebarIcons.text);
   addNode("unit-description", "Description", 4, sidebarIcons.text);
@@ -1737,59 +2500,17 @@ function buildGenericLayerRows(items: EditorNodeItem[]): LayerTreeRow[] {
     depth: item.depth + 1,
     kind: "node",
     iconSrc: nodeIcon(item.type),
-    nodeId: item.id
+    nodeId: item.id,
   }));
 }
 
-function pageDisplayName(pages: DocumentTemplate["pages"], pageId: string): string {
+function pageDisplayName(
+  pages: DocumentTemplate["pages"],
+  pageId: string,
+): string {
   const pageIndex = pages.findIndex((page) => page.id === pageId);
 
   return `Page ${pageIndex >= 0 ? pageIndex + 1 : 1}`;
-}
-
-function inspectorTitleForItem(item: EditorNodeItem): string {
-  if (item.type === "repeat") {
-    return "Repeat: Items";
-  }
-
-  return item.label;
-}
-
-interface FlatDataField extends DataField {
-  depth: number;
-}
-
-function flattenDataFields(fields: DataField[], depth = 0): FlatDataField[] {
-  return fields.flatMap((field) => [
-    { ...field, depth },
-    ...flattenDataFields(field.children ?? [], depth + 1)
-  ]);
-}
-
-function applyBindingPathToNode(node: EditableNode, path: string): void {
-  if (node.type === "text") {
-    node.content = [{ kind: "field", label: path, binding: { path } }];
-    return;
-  }
-
-  if (node.type === "repeat") {
-    node.binding.path = path;
-    return;
-  }
-
-  if (node.type === "barcode" || node.type === "qr") {
-    node.value = { kind: "binding", binding: { path } };
-    return;
-  }
-
-  if (node.type === "image") {
-    node.source = { kind: "binding", binding: { path } };
-    return;
-  }
-
-  if (node.type === "grid") {
-    node.binding = { path };
-  }
 }
 
 function nodeIcon(type: string | undefined): string {
@@ -1816,610 +2537,353 @@ function nodeIcon(type: string | undefined): string {
   return sidebarIcons.frame;
 }
 
-function NodeInspector({
-  item,
-  selectedCount,
-  activeTab,
-  onTabChange,
-  onFrameChange,
-  onNodeUpdate
-}: {
-  item: EditorNodeItem;
-  selectedCount: number;
-  activeTab: InspectorTab;
-  onTabChange: (tab: InspectorTab) => void;
-  onFrameChange: (framePatch: Partial<Frame>) => void;
-  onNodeUpdate: (update: (node: EditableNode) => void) => void;
-}): ReactElement {
-  const node = item.node;
-  const body =
-    activeTab === "design"
-      ? createElement(DesignInspector, { item, onFrameChange, onNodeUpdate })
-      : activeTab === "data"
-        ? createElement(DataInspector, { item, onNodeUpdate })
-        : createElement(StyleInspector, { item, onNodeUpdate });
-
-  return createElement(
-    "div",
-    { style: inspectorStyle },
-    createElement(InspectorTabs, { activeTab, onTabChange }),
-    selectedCount > 1 ? createElement("div", { style: noticeStyle }, `Editing primary selection. Alignment commands affect all ${selectedCount} nodes.`) : null,
-    createElement(
-      InspectorSection,
-      { title: "Selection", detail: node.type, defaultOpen: activeTab === "design" },
-      createElement(FieldRow, { label: "ID", value: item.id }),
-      createElement(FieldRow, { label: "Layer", value: `${item.layerKind} / ${item.layerId}` })
-    ),
-    body
-  );
-}
-
-function InspectorTabs({ activeTab, onTabChange }: { activeTab: InspectorTab; onTabChange: (tab: InspectorTab) => void }): ReactElement {
-  return createElement(
-    "div",
-    { style: inspectorTabsStyle },
-    (["design", "data", "style"] as const).map((tab) =>
-      createElement(
-        "button",
-        {
-          key: tab,
-          type: "button",
-          onClick: () => onTabChange(tab),
-          style: {
-            ...inspectorTabStyle,
-            color: activeTab === tab ? "#4f46e5" : "#475569",
-            borderBottomColor: activeTab === tab ? "#4f46e5" : "transparent"
-          }
-        },
-        tab[0].toUpperCase() + tab.slice(1)
-      )
-    )
-  );
-}
-
-function DesignInspector({
-  item,
-  onFrameChange,
-  onNodeUpdate
-}: {
-  item: EditorNodeItem;
-  onFrameChange: (framePatch: Partial<Frame>) => void;
-  onNodeUpdate: (update: (node: EditableNode) => void) => void;
-}): ReactElement {
-  const node = item.node;
-
-  return createElement(
-    "div",
-    { style: inspectorSectionStackStyle },
-    createElement(PositionSection, { frame: item.frame, onFrameChange }),
-    node.type === "repeat" ? createElement(RepeatLayoutInspector, { node, onNodeUpdate }) : null,
-    node.type === "text"
-      ? createElement(
-          InspectorSection,
-          { title: "Text Layout", detail: node.overflow ?? "wrap" },
-          createElement(SegmentedControl, {
-            label: "Overflow",
-            value: node.overflow ?? "wrap",
-            options: ["clip", "wrap", "shrink", "continue"],
-            onChange: (value) =>
-              onNodeUpdate((draft) => {
-                if (draft.type === "text") draft.overflow = value as TextNode["overflow"];
-              })
-          })
-        )
-      : null,
-    node.type === "barcode" || node.type === "qr"
-      ? createElement(
-          InspectorSection,
-          { title: "Generated Code", detail: node.type === "qr" ? "QR" : node.format },
-          createElement(FieldRow, { label: "Code Type", value: node.type === "qr" ? "QR Code" : "Barcode" }),
-          node.type === "barcode" ? createElement(FieldRow, { label: "Format", value: node.format }) : null,
-          createElement(FieldRow, { label: "Human Label", value: "Off" })
-        )
-      : null
-  );
-}
-
-function PositionSection({
-  frame,
-  onFrameChange
-}: {
-  frame: Frame;
-  onFrameChange: (framePatch: Partial<Frame>) => void;
-}): ReactElement {
-  return createElement(
-    InspectorSection,
-    { title: "Position & Size", detail: `${Math.round(frame.width)} x ${Math.round(frame.height)}` },
-    createElement(
-      "div",
-      { style: twoColumnGridStyle },
-      createElement(NumberInput, { label: "X", value: frame.x, onChange: (value) => onFrameChange({ x: value }) }),
-      createElement(NumberInput, { label: "Y", value: frame.y, onChange: (value) => onFrameChange({ y: value }) }),
-      createElement(NumberInput, { label: "W", value: frame.width, onChange: (value) => onFrameChange({ width: Math.max(1, value) }) }),
-      createElement(NumberInput, { label: "H", value: frame.height, onChange: (value) => onFrameChange({ height: Math.max(1, value) }) })
-    )
-  );
-}
-
-function RepeatLayoutInspector({
-  node,
-  onNodeUpdate
-}: {
-  node: RepeatNode;
-  onNodeUpdate: (update: (node: EditableNode) => void) => void;
-}): ReactElement {
-  return createElement(
-    InspectorSection,
-    { title: "Repeat Layout", detail: node.layout.direction },
-    createElement(SegmentedControl, {
-      label: "Direction",
-      value: node.layout.direction,
-      options: ["vertical", "horizontal"],
-      onChange: (value) =>
-        onNodeUpdate((draft) => {
-          if (draft.type === "repeat") draft.layout.direction = value as RepeatNode["layout"]["direction"];
-        })
-    }),
-    createElement(NumberInput, {
-      label: "Gap",
-      value: node.layout.gap,
-      onChange: (value) =>
-        onNodeUpdate((draft) => {
-          if (draft.type === "repeat") draft.layout.gap = Math.max(0, value);
-        })
-    }),
-    createElement(SegmentedControl, {
-      label: "Row Height",
-      value: node.layout.rowSizing ?? "fixed",
-      options: ["fixed", "compact"],
-      onChange: (value) =>
-        onNodeUpdate((draft) => {
-          if (draft.type === "repeat") draft.layout.rowSizing = value as RepeatNode["layout"]["rowSizing"];
-        })
-    }),
-    createElement(PropertyToggle, {
-      label: "Fill available space",
-      active: Boolean(node.layout.fillAvailableSpace),
-      onClick: () =>
-        onNodeUpdate((draft) => {
-          if (draft.type === "repeat") draft.layout.fillAvailableSpace = !draft.layout.fillAvailableSpace;
-        })
-    }),
-    createElement(SegmentedControl, {
-      label: "Page Break",
-      value: node.layout.splitItems === false ? "keep row" : "auto",
-      options: ["auto", "keep row"],
-      onChange: (value) =>
-        onNodeUpdate((draft) => {
-          if (draft.type === "repeat") draft.layout.splitItems = value === "keep row" ? false : undefined;
-        })
-    }),
-    createElement(PropertyToggle, { label: "Repeat header", active: false, onClick: () => undefined }),
-    createElement(PropertyToggle, { label: "Keep together", active: node.layout.splitItems === false, onClick: () => undefined })
-  );
-}
-
-function DataInspector({ item, onNodeUpdate }: { item: EditorNodeItem; onNodeUpdate: (update: (node: EditableNode) => void) => void }): ReactElement {
-  const node = item.node;
-
-  if (node.type === "repeat") {
-    return createElement(
-      "div",
-      { style: inspectorSectionStackStyle },
-      createElement(
-        InspectorSection,
-        { title: "Repeat Data", detail: node.binding.path },
-        createElement(TextInput, {
-          label: "Data Source",
-          value: node.binding.path,
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "repeat") draft.binding.path = value;
-            })
-        }),
-        createElement(TextInput, {
-          label: "Alias",
-          value: node.itemAlias,
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "repeat") draft.itemAlias = value;
-            })
-        }),
-        createElement(NumberInput, { label: "Min Rows", value: Number(node.metadata?.minEditorRows ?? 1), onChange: () => undefined }),
-        createElement(NumberInput, { label: "Sample", value: Number(node.metadata?.sampleRows ?? 1), onChange: () => undefined }),
-        createElement(PropertyToggle, { label: "Show sample rows", active: Boolean(node.metadata?.showSampleRows ?? true), onClick: () => undefined })
-      )
-    );
-  }
-
-  if (node.type === "text") {
-    const textValue = textNodeContentValue(node);
-    const firstBinding = firstTextBinding(node);
-
-    return createElement(
-      "div",
-      { style: inspectorSectionStackStyle },
-      createElement(
-        InspectorSection,
-        { title: "Text Content", detail: firstBinding ? "bound" : "static" },
-        createElement(TextAreaInput, {
-          label: "Content",
-          value: textValue,
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "text") draft.content = [{ kind: "text", text: value }];
-            })
-        }),
-        createElement(TextInput, {
-          label: "Binding",
-          value: firstBinding,
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "text") draft.content = value ? [{ kind: "field", label: value, binding: { path: value } }] : [];
-            })
-        })
-      )
-    );
-  }
-
-  if (node.type === "barcode" || node.type === "qr") {
-    return createElement(
-      "div",
-      { style: inspectorSectionStackStyle },
-      createElement(
-        InspectorSection,
-        { title: "Generated Code", detail: node.type === "qr" ? "QR Code" : node.format },
-        createElement(FieldRow, { label: "Code Type", value: node.type === "qr" ? "QR Code" : "Barcode" }),
-        createElement(TextInput, {
-          label: "Value",
-          value: dynamicValueLabel(node.value).replace(/[{}]/g, ""),
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "barcode" || draft.type === "qr") draft.value = { kind: "binding", binding: { path: value } };
-            })
-        }),
-        node.type === "barcode"
-          ? createElement(TextInput, {
-              label: "Format",
-              value: node.format,
-              onChange: (value) =>
-                onNodeUpdate((draft) => {
-                  if (draft.type === "barcode") draft.format = value;
-                })
-            })
-          : null,
-        createElement(PropertyToggle, { label: "Human-readable label", active: false, onClick: () => undefined })
-      )
-    );
-  }
-
-  return createElement("p", { style: emptyTextStyle }, "This node has no data binding settings yet.");
-}
-
-function StyleInspector({ item, onNodeUpdate }: { item: EditorNodeItem; onNodeUpdate: (update: (node: EditableNode) => void) => void }): ReactElement {
-  const node = item.node;
-
-  if (node.type === "text") {
-    return createElement(
-      "div",
-      { style: inspectorSectionStackStyle },
-      createElement(
-        InspectorSection,
-        { title: "Typography", detail: `${node.style.fontSize}px` },
-        createElement(TextInput, {
-          label: "Font",
-          value: node.style.fontFamily,
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "text") draft.style.fontFamily = value;
-            })
-        }),
-        createElement(NumberInput, {
-          label: "Size",
-          value: node.style.fontSize,
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "text") draft.style.fontSize = value;
-            })
-        }),
-        createElement(TextInput, {
-          label: "Weight",
-          value: String(node.style.fontWeight ?? 400),
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "text") draft.style.fontWeight = Number.isFinite(Number(value)) ? Number(value) : value;
-            })
-        }),
-        createElement(NumberInput, {
-          label: "Line",
-          value: node.style.lineHeight ?? 1.2,
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "text") draft.style.lineHeight = value;
-            })
-        }),
-        createElement(SegmentedControl, {
-          label: "Align",
-          value: node.style.align ?? "left",
-          options: ["left", "center", "right", "justify"],
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "text") draft.style.align = value as TextNode["style"]["align"];
-            })
-        })
-      ),
-      createElement(
-        InspectorSection,
-        { title: "Appearance", detail: node.style.color ?? "#111827" },
-        createElement(TextInput, {
-          label: "Color",
-          value: node.style.color ?? "#111827",
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "text") draft.style.color = value;
-            })
-        }),
-        createElement(NumberInput, {
-          label: "Tracking",
-          value: node.style.letterSpacing ?? 0,
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "text") draft.style.letterSpacing = value;
-            })
-        })
-      )
-    );
-  }
-
-  if (node.type === "shape") {
-    return createElement(
-      "div",
-      { style: inspectorSectionStackStyle },
-      createElement(
-        InspectorSection,
-        { title: "Appearance", detail: node.style.fill ?? "transparent" },
-        createElement(TextInput, {
-          label: "Fill",
-          value: node.style.fill ?? "",
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "shape") draft.style.fill = value;
-            })
-        }),
-        createElement(TextInput, {
-          label: "Border",
-          value: node.style.stroke ?? "",
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "shape") draft.style.stroke = value;
-            })
-        }),
-        createElement(NumberInput, {
-          label: "Width",
-          value: node.style.strokeWidth ?? 1,
-          onChange: (value) =>
-            onNodeUpdate((draft) => {
-              if (draft.type === "shape") draft.style.strokeWidth = value;
-            })
-        })
-      )
-    );
-  }
-
-  if (node.type === "repeat") {
-    return createElement(
-      "div",
-      { style: inspectorSectionStackStyle },
-      createElement(
-        InspectorSection,
-        { title: "Repeat Appearance", detail: "Frame style" },
-        createElement(FieldRow, { label: "Background", value: "#FFFFFF" }),
-        createElement(FieldRow, { label: "Border", value: "#E5E7EB / 1px" }),
-        createElement(FieldRow, { label: "Padding", value: "8px" })
-      )
-    );
-  }
-
-  return createElement("p", { style: emptyTextStyle }, "Style controls for this node type are not expanded yet.");
-}
-function InspectorSection({
-  title,
-  detail,
-  defaultOpen = true,
-  children
-}: {
-  title: string;
-  detail?: string;
-  defaultOpen?: boolean;
-  children?: ReactNode;
-}): ReactElement {
-  return createElement(
-    "details",
-    { open: defaultOpen, style: inspectorSectionStyle },
-    createElement(
-      "summary",
-      { style: inspectorSectionSummaryStyle },
-      createElement("span", null, title),
-      detail ? createElement("span", { style: inspectorSectionDetailStyle }, detail) : null
-    ),
-    createElement("div", { style: inspectorSectionBodyStyle }, children)
-  );
-}
-
-function SegmentedControl({
-  label,
-  value,
-  options,
-  onChange
-}: {
-  label: string;
-  value: string;
-  options: string[];
-  onChange: (value: string) => void;
-}): ReactElement {
-  return createElement(
-    "label",
-    { style: textAreaRowStyle },
-    createElement("span", { style: fieldLabelStyle }, label),
-    createElement(
-      "div",
-      { style: segmentedControlStyle },
-      options.map((option) =>
-        createElement(
-          "button",
-          {
-            key: option,
-            type: "button",
-            onClick: () => onChange(option),
-            style: {
-              ...segmentedButtonStyle,
-              background: option === value ? "#ffffff" : "transparent",
-              borderColor: option === value ? "#cbd5e1" : "transparent",
-              color: option === value ? "#111827" : "#64748b",
-              boxShadow: option === value ? "0 1px 2px rgba(15, 23, 42, 0.08)" : "none"
-            }
-          },
-          option
-        )
-      )
-    )
-  );
-}
-
-function PageSettingsPanel({
-  page,
-  showGrid,
-  showRulers,
-  snapToGrid,
-  snapToGuides,
-  onToggleGrid,
-  onToggleRulers,
-  onToggleSnapGrid,
-  onToggleSnapGuides
-}: {
-  page: ReturnType<typeof buildEditorPageModel>;
-  showGrid: boolean;
-  showRulers: boolean;
-  snapToGrid: boolean;
-  snapToGuides: boolean;
-  onToggleGrid: () => void;
-  onToggleRulers: () => void;
-  onToggleSnapGrid: () => void;
-  onToggleSnapGuides: () => void;
-}): ReactElement {
-  const orientation = page.size.width > page.size.height ? "Landscape" : "Portrait";
-
-  return createElement(
-    "div",
-    { style: inspectorStyle },
-    createElement(
-      InspectorSection,
-      { title: "Page", detail: orientation },
-      createElement(FieldRow, { label: "Name", value: page.name }),
-      createElement(FieldRow, { label: "Page Size", value: `${page.size.width} x ${page.size.height}px` }),
-      createElement(FieldRow, { label: "Orientation", value: orientation }),
-      createElement(FieldRow, { label: "Background", value: "#FFFFFF" }),
-      createElement(FieldRow, { label: "Margins", value: page.margin ? `${page.margin.top}/${page.margin.right}/${page.margin.bottom}/${page.margin.left}` : "None" }),
-      createElement(PropertyToggle, { label: "Show margins", active: Boolean(page.margin), onClick: () => undefined })
-    ),
-    createElement(
-      InspectorSection,
-      { title: "Grid", detail: showGrid ? "visible" : "hidden" },
-      createElement(PropertyToggle, { label: "Show grid", active: showGrid, onClick: onToggleGrid }),
-      createElement(FieldRow, { label: "Grid Size", value: `${GRID_SIZE}px` })
-    ),
-    createElement(
-      InspectorSection,
-      { title: "Snapping & Guides", detail: snapToGrid || snapToGuides ? "on" : "off" },
-      createElement(PropertyToggle, { label: "Snap to grid", active: snapToGrid, onClick: onToggleSnapGrid }),
-      createElement(PropertyToggle, { label: "Guide visibility", active: snapToGuides, onClick: onToggleSnapGuides }),
-      createElement(PropertyToggle, { label: "Ruler visibility", active: showRulers, onClick: onToggleRulers }),
-      createElement(FieldRow, { label: "Snap Threshold", value: `${SNAP_THRESHOLD}px` })
-    )
-  );
-}
-
 function DataSchemaPanel({
-  template,
-  selectedNodeType,
-  onInsertBinding
+  model,
+  selectedNode,
+  selectedCount,
+  onActivateField,
 }: {
-  template: DocumentTemplate;
-  selectedNodeType?: string;
-  onInsertBinding?: (path: string) => void;
+  model: ReturnType<typeof buildDataExplorerModel>;
+  selectedNode?: EditableNode;
+  selectedCount: number;
+  onActivateField: (field: DataExplorerField) => void;
 }): ReactElement {
   const [query, setQuery] = useState("");
-  const fields = template.dataSchema?.fields ?? [];
-  const flatFields = flattenDataFields(fields);
+  const [collapsedFields, setCollapsedFields] = useState<
+    Record<string, boolean>
+  >({});
   const normalizedQuery = query.trim().toLowerCase();
-  const visibleFields = normalizedQuery
-    ? flatFields.filter((field) => `${field.label} ${field.path} ${field.kind}`.toLowerCase().includes(normalizedQuery))
-    : flatFields;
+  const visibleGroups = filterDataExplorerGroups(
+    model.groups,
+    normalizedQuery,
+  ).map((group) => ({
+    ...group,
+    fields: normalizedQuery
+      ? group.fields
+      : visibleDataTreeFields(group, collapsedFields),
+  }));
+  const visibleFieldCount = visibleGroups.reduce(
+    (sum, group) => sum + group.fields.length,
+    0,
+  );
+  const status =
+    selectedCount > 1
+      ? "Select one node to bind"
+      : selectedNode
+        ? `Binding to ${selectedNode.type}`
+        : "Click or drag to create text";
 
   return createElement(
     "section",
     { style: dataPanelStyle },
-    createElement(PanelHeader, { title: "Data", detail: `${flatFields.length} fields` }),
-    createElement("input", {
-      type: "search",
-      value: query,
-      placeholder: "Search fields",
-      onChange: (event) => setQuery((event.currentTarget as HTMLInputElement).value),
-      style: dataSearchStyle
+    createElement(PanelHeader, {
+      title: "Data",
+      detail: `${model.allFields.length} fields`,
     }),
+    createElement(DataSearchInput, { value: query, onChange: setQuery }),
+    createElement("div", { style: dataPanelStatusStyle }, status),
     createElement(
       "div",
       { style: dataFieldsStyle },
-      fields.length === 0
-        ? createElement("p", { style: emptyTextStyle }, "No data schema is attached to this template.")
-        : visibleFields.length === 0
-          ? createElement("p", { style: emptyTextStyle }, "No fields match that search.")
-          : visibleFields.map((field) =>
-              createElement(
-                "div",
-                { key: field.path, style: { ...dataFieldStyle, paddingLeft: 8 + field.depth * 10 } },
-                createElement(
-                  "div",
-                  { style: dataFieldHeaderStyle },
-                  createElement("span", { style: layerNameStyle }, field.label),
-                  createElement(
-                    "span",
-                    {
-                      style: {
-                        ...dataTypePillStyle,
-                        background: field.kind === "array" ? "#eef2ff" : "#f8fafc",
-                        color: field.kind === "array" ? "#3730a3" : "#64748b"
-                      }
-                    },
-                    field.kind === "array" ? "array" : field.kind
-                  )
-                ),
-                createElement("span", { style: layerMetaStyle }, field.path),
-                createElement(
-                  "div",
-                  { style: dataFieldActionsStyle },
-                  createElement(DataActionButton, {
-                    icon: Copy01Icon,
-                    label: "Copy",
-                    title: `Copy ${field.path}`,
-                    onClick: () => {
-                      void navigator.clipboard?.writeText(field.path);
-                    }
-                  }),
-                  createElement(DataActionButton, {
-                    icon: Link01Icon,
-                    label: onInsertBinding ? "Insert" : "Select a node",
-                    title: onInsertBinding
-                      ? `Insert ${field.path} into selected ${selectedNodeType ?? "node"}`
-                      : "Select a node to insert this binding",
-                    disabled: !onInsertBinding,
-                    onClick: () => onInsertBinding?.(field.path)
-                  })
-                )
-              )
+      model.allFields.length === 0
+        ? createElement(
+            "p",
+            { style: emptyTextStyle },
+            "No data schema is attached to this template.",
+          )
+        : visibleFieldCount === 0
+          ? createElement(
+              "p",
+              { style: emptyTextStyle },
+              "No fields match that search.",
             )
-    )
+          : visibleGroups.map((group) =>
+              createElement(DataExplorerGroupView, {
+                key: group.id,
+                group,
+                selectedNode,
+                selectedCount,
+                collapsedFields,
+                onToggleField: (field) =>
+                  setCollapsedFields((current) => ({
+                    ...current,
+                    [dataTreeKey(group.id, field)]:
+                      !current[dataTreeKey(group.id, field)],
+                  })),
+                onActivateField,
+              }),
+            ),
+    ),
   );
+}
+
+function filterDataExplorerGroups(
+  groups: DataExplorerGroup[],
+  query: string,
+): DataExplorerGroup[] {
+  if (!query) {
+    return groups;
+  }
+
+  return groups
+    .map((group) => ({
+      ...group,
+      fields: group.fields.filter((field) =>
+        `${field.label} ${field.path} ${field.displayPath ?? ""} ${field.kind}`
+          .toLowerCase()
+          .includes(query),
+      ),
+    }))
+    .filter((group) => group.fields.length > 0);
+}
+
+function DataExplorerGroupView({
+  group,
+  selectedNode,
+  selectedCount,
+  collapsedFields,
+  onToggleField,
+  onActivateField,
+}: {
+  group: DataExplorerGroup;
+  selectedNode?: EditableNode;
+  selectedCount: number;
+  collapsedFields: Record<string, boolean>;
+  onToggleField: (field: DataExplorerField) => void;
+  onActivateField: (field: DataExplorerField) => void;
+}): ReactElement {
+  return createElement(
+    "div",
+    { style: dataGroupStyle },
+    createElement(
+      "div",
+      { style: dataGroupHeaderStyle },
+      createElement("span", null, group.title),
+      group.detail
+        ? createElement("span", { style: dataGroupDetailStyle }, group.detail)
+        : null,
+    ),
+    group.fields.map((field) =>
+      createElement(DataExplorerFieldRow, {
+        key: field.id,
+        field,
+        selectedNode,
+        selectedCount,
+        collapsed: Boolean(collapsedFields[dataTreeKey(group.id, field)]),
+        onToggleCollapsed: field.hasChildren
+          ? () => onToggleField(field)
+          : undefined,
+        onActivateField,
+      }),
+    ),
+  );
+}
+
+function DataExplorerFieldRow({
+  field,
+  selectedNode,
+  selectedCount,
+  collapsed,
+  onToggleCollapsed,
+  onActivateField,
+}: {
+  field: DataExplorerField;
+  selectedNode?: EditableNode;
+  selectedCount: number;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
+  onActivateField: (field: DataExplorerField) => void;
+}): ReactElement {
+  const bindDisabled =
+    selectedCount > 1 || !isFieldBindableForNode(field, selectedNode);
+  const canDragToCanvas = isFieldBindableForNode(field);
+  const title = bindDisabled
+    ? selectedCount > 1
+      ? "Select one node to bind"
+      : `Cannot bind ${field.kind} to ${selectedNode?.type ?? "text"}`
+    : selectedNode
+      ? `Bind ${field.path} to selected ${selectedNode.type}`
+      : `Create text bound to ${field.path}`;
+
+  return createElement(
+    "div",
+    {
+      draggable: canDragToCanvas,
+      title,
+      role: "button",
+      tabIndex: bindDisabled ? -1 : 0,
+      onClick: (event: MouseEvent<HTMLDivElement>) => {
+        if ((event.target as HTMLElement).closest("button") || bindDisabled) {
+          return;
+        }
+
+        onActivateField(field);
+      },
+      onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
+        if (bindDisabled || (event.key !== "Enter" && event.key !== " ")) {
+          return;
+        }
+
+        event.preventDefault();
+        onActivateField(field);
+      },
+      onDragStart: (event: DragEvent<HTMLDivElement>) => {
+        if (!canDragToCanvas) {
+          event.preventDefault();
+          return;
+        }
+
+        event.dataTransfer.effectAllowed = "copy";
+        event.dataTransfer.setData(BINDING_DRAG_TYPE, field.path);
+        event.dataTransfer.setData("text/plain", `{{${field.path}}}`);
+      },
+      style: {
+        ...dataFieldStyle,
+        paddingLeft: 8 + field.depth * 10,
+        cursor: bindDisabled ? "not-allowed" : "pointer",
+        opacity: bindDisabled ? 0.62 : 1,
+      },
+    },
+    createElement(
+      "div",
+      { style: dataFieldHeaderStyle },
+      createElement(
+        "span",
+        { style: dataFieldNameWrapStyle },
+        field.hasChildren
+          ? createElement(
+              "button",
+              {
+                type: "button",
+                title: collapsed
+                  ? `Expand ${field.path}`
+                  : `Collapse ${field.path}`,
+                onClick: (event) => {
+                  event.stopPropagation();
+                  onToggleCollapsed?.();
+                },
+                style: dataTreeToggleStyle,
+              },
+              createElement(ToolIcon, {
+                icon: ChevronRightIcon,
+                size: 12,
+                style: {
+                  transform: collapsed ? "rotate(0deg)" : "rotate(90deg)",
+                  transition: "transform 120ms ease",
+                },
+              }),
+            )
+          : createElement("span", { style: dataTreeToggleSpacerStyle }),
+        createElement("span", { style: layerNameStyle }, field.label),
+      ),
+      createElement(
+        "span",
+        {
+          style: {
+            ...dataTypePillStyle,
+            background: dataKindBackground(field),
+            color: dataKindColor(field),
+          },
+        },
+        field.kind,
+      ),
+    ),
+    createElement(
+      "span",
+      { style: layerMetaStyle },
+      field.displayPath ? `${field.path} · ${field.displayPath}` : field.path,
+    ),
+    createElement(
+      "div",
+      { style: dataFieldActionsStyle },
+      createElement(DataActionButton, {
+        icon: Copy01Icon,
+        label: "Copy",
+        title: `Copy ${field.path}`,
+        onClick: () => {
+          void navigator.clipboard?.writeText(field.path);
+        },
+      }),
+      createElement(DataActionButton, {
+        icon: selectedNode ? Link01Icon : TypeCursorIcon,
+        label: selectedNode ? "Bind" : "Text",
+        title,
+        disabled: bindDisabled,
+        onClick: () => onActivateField(field),
+      }),
+    ),
+  );
+}
+
+function visibleDataTreeFields(
+  group: DataExplorerGroup,
+  collapsedFields: Record<string, boolean>,
+): DataExplorerField[] {
+  return group.fields.filter((field) => {
+    let parentPath = field.parentPath;
+
+    while (parentPath) {
+      const parent = group.fields.find(
+        (candidate) => candidate.path === parentPath,
+      );
+
+      if (!parent) {
+        return true;
+      }
+
+      if (collapsedFields[dataTreeKey(group.id, parent)]) {
+        return false;
+      }
+
+      parentPath = parent.parentPath;
+    }
+
+    return true;
+  });
+}
+
+function dataTreeKey(groupId: string, field: DataExplorerField): string {
+  return `${groupId}:${field.id}`;
+}
+
+function dataKindBackground(field: DataExplorerField): string {
+  if (field.source === "scope") return "#eef2ff";
+  if (field.source === "variable") return "#f5f3ff";
+  if (field.kind === "array") return "#ecfdf5";
+  if (field.kind === "object") return "#f8fafc";
+  return "#ffffff";
+}
+
+function dataKindColor(field: DataExplorerField): string {
+  if (field.source === "scope") return "#3730a3";
+  if (field.source === "variable") return "#6d28d9";
+  if (field.kind === "array") return "#047857";
+  if (field.kind === "object") return "#64748b";
+  return "#475569";
+}
+
+function DataSearchInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}): ReactElement {
+  const [focused, setFocused] = useState(false);
+
+  return createElement("input", {
+    type: "search",
+    value,
+    placeholder: "Search fields",
+    onChange: (event) =>
+      onChange((event.currentTarget as HTMLInputElement).value),
+    onFocus: () => setFocused(true),
+    onBlur: () => setFocused(false),
+    style: {
+      ...dataSearchStyle,
+      ...(focused ? dataSearchFocusStyle : dataSearchBlurStyle),
+    },
+  });
 }
 
 function DataActionButton({
@@ -2427,7 +2891,7 @@ function DataActionButton({
   label,
   title,
   disabled,
-  onClick
+  onClick,
 }: {
   icon: IconSvgElement;
   label: string;
@@ -2435,6 +2899,8 @@ function DataActionButton({
   disabled?: boolean;
   onClick: () => void;
 }): ReactElement {
+  const [focused, setFocused] = useState(false);
+
   return createElement(
     "button",
     {
@@ -2442,18 +2908,27 @@ function DataActionButton({
       title,
       disabled,
       onClick,
+      onFocus: () => setFocused(true),
+      onBlur: () => setFocused(false),
       style: {
         ...dataActionButtonStyle,
+        ...(focused ? dataActionButtonFocusStyle : null),
         opacity: disabled ? 0.45 : 1,
-        cursor: disabled ? "not-allowed" : "pointer"
-      }
+        cursor: disabled ? "not-allowed" : "pointer",
+      },
     },
     createElement(ToolIcon, { icon, style: toolbarIconStyle, size: 13 }),
-    createElement("span", null, label)
+    createElement("span", null, label),
   );
 }
 
-function PreviewOverlay({ document, onClose }: { document: ReturnType<typeof renderDocument>; onClose: () => void }): ReactElement {
+function PreviewOverlay({
+  document,
+  onClose,
+}: {
+  document: ReturnType<typeof renderDocument>;
+  onClose: () => void;
+}): ReactElement {
   return createElement(
     "div",
     { style: previewOverlayStyle },
@@ -2461,25 +2936,35 @@ function PreviewOverlay({ document, onClose }: { document: ReturnType<typeof ren
       "header",
       { style: previewToolbarStyle },
       createElement("strong", null, "Rendered Preview"),
-      createElement(ToolbarButton, { label: "Close", title: "Close preview", onClick: onClose })
+      createElement(ToolbarButton, {
+        label: "Close",
+        title: "Close preview",
+        onClick: onClose,
+      }),
     ),
     createElement(
       "div",
       { style: previewScrollStyle },
       createElement(DocumentPreview, {
         document,
-        scale: 0.86
-      })
-    )
+        scale: 0.86,
+      }),
+    ),
   );
 }
 
-function PanelHeader({ title, detail }: { title: string; detail: string }): ReactElement {
+function PanelHeader({
+  title,
+  detail,
+}: {
+  title: string;
+  detail: string;
+}): ReactElement {
   return createElement(
     "header",
     { style: panelHeaderStyle },
     createElement("h2", { style: panelTitleStyle }, title),
-    createElement("span", { style: panelDetailStyle }, detail)
+    createElement("span", { style: panelDetailStyle }, detail),
   );
 }
 
@@ -2490,16 +2975,19 @@ function ToolbarButton({
   disabled,
   onClick,
   variant = "default",
-  compact = false
+  compact = false,
 }: {
   icon?: IconSvgElement;
   label?: string;
   title: string;
   disabled?: boolean;
   onClick: () => void;
-  variant?: "default" | "primary" | "ghost";
+  variant?: "default" | "primary" | "ghost" | "subtle";
   compact?: boolean;
 }): ReactElement {
+  const [focused, setFocused] = useState(false);
+  const isSubtle = variant === "subtle";
+
   return createElement(
     "button",
     {
@@ -2507,217 +2995,89 @@ function ToolbarButton({
       title,
       disabled,
       onClick,
+      onFocus: () => setFocused(true),
+      onBlur: () => setFocused(false),
       style: {
         ...toolbarButtonStyle,
+        height: compact ? 32 : toolbarButtonStyle.height,
         width: compact ? 32 : undefined,
         minWidth: compact ? 32 : toolbarButtonStyle.minWidth,
         padding: compact ? 0 : toolbarButtonStyle.padding,
-        background: variant === "primary" ? "#4f46e5" : variant === "ghost" ? "transparent" : toolbarButtonStyle.background,
-        borderColor: variant === "primary" ? "#4f46e5" : variant === "ghost" ? "transparent" : toolbarButtonStyle.borderColor,
-        color: variant === "primary" ? "#ffffff" : variant === "ghost" ? "#64748b" : toolbarButtonStyle.color,
+        background:
+          variant === "primary"
+            ? "#4f46e5"
+            : variant === "ghost" || isSubtle
+              ? "transparent"
+              : toolbarButtonStyle.background,
+        border:
+          variant === "primary"
+            ? "1px solid #4f46e5"
+            : variant === "ghost" || isSubtle
+              ? "1px solid transparent"
+              : toolbarButtonStyle.border,
+        borderColor:
+          variant === "primary"
+            ? "#4f46e5"
+            : variant === "ghost" || isSubtle
+              ? "transparent"
+              : toolbarButtonStyle.borderColor,
+        boxShadow: isSubtle
+          ? focused
+            ? "0 0 0 2px rgba(129, 140, 248, 0.28)"
+            : "none"
+          : toolbarButtonStyle.boxShadow,
+        outline: "none",
+        color:
+          variant === "primary"
+            ? "#ffffff"
+            : variant === "ghost" || isSubtle
+              ? "#64748b"
+              : toolbarButtonStyle.color,
         opacity: disabled ? 0.4 : 1,
-        cursor: disabled ? "not-allowed" : "pointer"
-      }
-    },
-    icon ? createElement(ToolIcon, { icon, style: toolbarIconStyle, size: 16 }) : null,
-    label ? createElement("span", null, label) : null
-  );
-}
-
-function ToggleButton({
-  icon,
-  title,
-  active,
-  onClick
-}: {
-  icon: IconSvgElement;
-  title: string;
-  active: boolean;
-  onClick: () => void;
-}): ReactElement {
-  return createElement(
-    "button",
-    {
-      type: "button",
-      title,
-      onClick,
-      style: {
-        ...toolbarButtonStyle,
-        width: 32,
-        minWidth: 32,
-        padding: 0,
-        background: active ? "#e0ecff" : "#ffffff",
-        borderColor: active ? "#7aa7ff" : "#d0d7e2",
-        color: active ? "#1d4ed8" : "#334155"
-      }
-    },
-    createElement(ToolIcon, { icon, style: toolbarIconStyle, size: 16 })
-  );
-}
-
-function FieldRow({ label, value }: { label: string; value: string }): ReactElement {
-  return createElement(
-    "div",
-    { style: readOnlyRowStyle },
-    createElement("span", { style: fieldLabelStyle }, label),
-    createElement("span", { style: fieldValueStyle }, value)
-  );
-}
-
-function NumberInput({
-  label,
-  value,
-  onChange
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-}): ReactElement {
-  return createElement(
-    "label",
-    { style: inputRowStyle },
-    createElement("span", { style: fieldLabelStyle }, label),
-    createElement("input", {
-      type: "number",
-      value,
-      onChange: (event) => {
-        const nextValue = Number(event.currentTarget.value);
-
-        if (Number.isFinite(nextValue)) {
-          onChange(nextValue);
-        }
+        cursor: disabled ? "not-allowed" : "pointer",
       },
-      style: numberInputStyle
-    })
-  );
-}
-
-function TextInput({
-  label,
-  value,
-  onChange
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}): ReactElement {
-  return createElement(
-    "label",
-    { style: inputRowStyle },
-    createElement("span", { style: fieldLabelStyle }, label),
-    createElement("input", {
-      type: "text",
-      value,
-      onChange: (event) => onChange((event.currentTarget as HTMLInputElement).value),
-      style: textInputStyle
-    })
-  );
-}
-
-function TextAreaInput({
-  label,
-  value,
-  onChange
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}): ReactElement {
-  return createElement(
-    "label",
-    { style: textAreaRowStyle },
-    createElement("span", { style: fieldLabelStyle }, label),
-    createElement("textarea", {
-      value,
-      onChange: (event) => onChange((event.currentTarget as HTMLTextAreaElement).value),
-      rows: 4,
-      style: textAreaInputStyle
-    })
-  );
-}
-
-function PropertyToggle({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }): ReactElement {
-  return createElement(
-    "button",
-    {
-      type: "button",
-      onClick,
-      style: {
-        ...propertyToggleStyle,
-        background: active ? "#eef2ff" : "#ffffff",
-        borderColor: active ? "#818cf8" : "#d8dee8",
-        color: active ? "#3730a3" : "#334155"
-      }
     },
-    createElement("span", null, label),
-    createElement("span", { style: togglePillStyle }, active ? "On" : "Off")
+    icon
+      ? createElement(ToolIcon, { icon, style: toolbarIconStyle, size: 16 })
+      : null,
+    label ? createElement("span", null, label) : null,
   );
 }
 
-function SectionTitle({ title }: { title: string }): ReactElement {
-  return createElement("h3", { style: sectionTitleStyle }, title);
-}
-
-function textNodeContentValue(node: TextNode): string {
-  return node.content
-    .map((part) => {
-      if (part.kind === "text") {
-        return part.text;
-      }
-
-      return `{{${part.binding.path}}}`;
-    })
-    .join("");
-}
-
-function firstTextBinding(node: TextNode): string {
-  return node.content.find((part) => part.kind === "field")?.binding.path ?? "";
-}
-
-function dynamicValueLabel(value: DynamicValue): string {
-  if (value.kind === "literal") {
-    return value.value;
-  }
-
-  if (value.kind === "binding") {
-    return `{{${value.binding.path}}}`;
-  }
-
-  return value.parts
-    .map((part) => {
-      if (part.kind === "text") {
-        return part.text;
-      }
-
-      return `{{${part.binding.path}}}`;
-    })
-    .join("");
-}
-
-function getNextSelection(currentSelection: string[], nodeId: string, additive: boolean): string[] {
+function getNextSelection(
+  currentSelection: string[],
+  nodeId: string,
+  additive: boolean,
+): string[] {
   if (!additive) {
     return currentSelection.includes(nodeId) ? currentSelection : [nodeId];
   }
 
-  return currentSelection.includes(nodeId) ? currentSelection.filter((id) => id !== nodeId) : [...currentSelection, nodeId];
+  return currentSelection.includes(nodeId)
+    ? currentSelection.filter((id) => id !== nodeId)
+    : [...currentSelection, nodeId];
 }
 
 function snapMove(
   rawDelta: Pick<Frame, "x" | "y">,
   drag: DragState,
   nodeItems: EditorNodeItem[],
-  pageSize: Frame["width"] extends number ? { width: number; height: number } : never,
+  pageSize: Frame["width"] extends number
+    ? { width: number; height: number }
+    : never,
   options: {
     snapToGrid: boolean;
     snapToGuides: boolean;
     verticalGuides: number[];
     horizontalGuides: number[];
-  }
+  },
 ): { delta: Pick<Frame, "x" | "y">; guides: ActiveGuide[] } {
   let deltaX = rawDelta.x;
   let deltaY = rawDelta.y;
   const guides: ActiveGuide[] = [];
-  const selectedStartFrames = drag.nodeIds.map((id) => drag.startAbsoluteFrames[id]).filter((frame): frame is Frame => Boolean(frame));
+  const selectedStartFrames = drag.nodeIds
+    .map((id) => drag.startAbsoluteFrames[id])
+    .filter((frame): frame is Frame => Boolean(frame));
 
   if (selectedStartFrames.length === 0) {
     return { delta: rawDelta, guides };
@@ -2733,9 +3093,25 @@ function snapMove(
   }
 
   if (options.snapToGuides) {
-    const unselected = nodeItems.filter((item) => !drag.nodeIds.includes(item.id));
-    const xSnap = findAxisSnap(selectionBounds, deltaX, "x", pageSize, unselected, options.verticalGuides);
-    const ySnap = findAxisSnap(selectionBounds, deltaY, "y", pageSize, unselected, options.horizontalGuides);
+    const unselected = nodeItems.filter(
+      (item) => !drag.nodeIds.includes(item.id),
+    );
+    const xSnap = findAxisSnap(
+      selectionBounds,
+      deltaX,
+      "x",
+      pageSize,
+      unselected,
+      options.verticalGuides,
+    );
+    const ySnap = findAxisSnap(
+      selectionBounds,
+      deltaY,
+      "y",
+      pageSize,
+      unselected,
+      options.horizontalGuides,
+    );
 
     if (xSnap) {
       deltaX += xSnap.adjustment;
@@ -2750,7 +3126,7 @@ function snapMove(
 
   return {
     delta: { x: deltaX, y: deltaY },
-    guides
+    guides,
   };
 }
 
@@ -2760,7 +3136,7 @@ function findAxisSnap(
   axis: GuideAxis,
   pageSize: { width: number; height: number },
   unselected: EditorNodeItem[],
-  userGuides: number[]
+  userGuides: number[],
 ): { adjustment: number; guide: ActiveGuide } | undefined {
   const size = axis === "x" ? pageSize.width : pageSize.height;
   const start = axis === "x" ? bounds.x : bounds.y;
@@ -2768,7 +3144,7 @@ function findAxisSnap(
   const movingPositions = [
     { value: start + delta, label: "start" },
     { value: start + length / 2 + delta, label: "center" },
-    { value: start + length + delta, label: "end" }
+    { value: start + length + delta, label: "end" },
   ];
   const candidates = [
     { value: 0, label: "page start" },
@@ -2783,11 +3159,13 @@ function findAxisSnap(
       return [
         { value: itemStart, label: item.label },
         { value: itemStart + itemLength / 2, label: item.label },
-        { value: itemStart + itemLength, label: item.label }
+        { value: itemStart + itemLength, label: item.label },
       ];
-    })
+    }),
   ];
-  let best: { adjustment: number; guide: ActiveGuide; distance: number } | undefined;
+  let best:
+    | { adjustment: number; guide: ActiveGuide; distance: number }
+    | undefined;
 
   for (const moving of movingPositions) {
     for (const candidate of candidates) {
@@ -2802,9 +3180,9 @@ function findAxisSnap(
         guide: {
           axis,
           value: candidate.value,
-          label: `${moving.label} to ${candidate.label}`
+          label: `${moving.label} to ${candidate.label}`,
         },
-        distance
+        distance,
       };
     }
   }
@@ -2818,36 +3196,58 @@ function updateDraggedGuide(
   board: HTMLDivElement | null,
   zoom: number,
   setVerticalGuides: (update: (guides: number[]) => number[]) => void,
-  setHorizontalGuides: (update: (guides: number[]) => number[]) => void
+  setHorizontalGuides: (update: (guides: number[]) => number[]) => void,
 ): void {
   if (!board) {
     return;
   }
 
   const rect = board.getBoundingClientRect();
-  const value = drag.axis === "x" ? (event.clientX - rect.left - RULER_SIZE) / zoom : (event.clientY - rect.top - RULER_SIZE) / zoom;
+  const value =
+    drag.axis === "x"
+      ? (event.clientX - rect.left - RULER_SIZE) / zoom
+      : (event.clientY - rect.top - RULER_SIZE) / zoom;
   const rounded = roundFrameValue(Math.max(0, value));
 
   if (drag.axis === "x") {
-    setVerticalGuides((guides) => guides.map((guide, index) => (index === drag.index ? rounded : guide)));
+    setVerticalGuides((guides) =>
+      guides.map((guide, index) => (index === drag.index ? rounded : guide)),
+    );
   } else {
-    setHorizontalGuides((guides) => guides.map((guide, index) => (index === drag.index ? rounded : guide)));
+    setHorizontalGuides((guides) =>
+      guides.map((guide, index) => (index === drag.index ? rounded : guide)),
+    );
   }
 }
 
-function getPagePoint(event: PointerEvent<HTMLDivElement>, zoom: number): Pick<Frame, "x" | "y"> {
+function getPagePoint(
+  event: PointerEvent<HTMLDivElement> | DragEvent<HTMLDivElement>,
+  zoom: number,
+): Pick<Frame, "x" | "y"> {
   const rect = event.currentTarget.getBoundingClientRect();
 
   return {
     x: (event.clientX - rect.left) / zoom,
-    y: (event.clientY - rect.top) / zoom
+    y: (event.clientY - rect.top) / zoom,
   };
 }
 
-function snapPoint(point: Pick<Frame, "x" | "y">, enabled: boolean): Pick<Frame, "x" | "y"> {
+function defaultDataInsertPoint(
+  page: ReturnType<typeof buildEditorPageModel>,
+): Pick<Frame, "x" | "y"> {
+  return {
+    x: page.margin?.left ? page.margin.left + 16 : 72,
+    y: page.margin?.top ? page.margin.top + 16 : 72,
+  };
+}
+
+function snapPoint(
+  point: Pick<Frame, "x" | "y">,
+  enabled: boolean,
+): Pick<Frame, "x" | "y"> {
   return {
     x: snapCoordinate(point.x, enabled),
-    y: snapCoordinate(point.y, enabled)
+    y: snapCoordinate(point.y, enabled),
   };
 }
 
@@ -2858,10 +3258,16 @@ function snapCoordinate(value: number, enabled: boolean): number {
 
   const nearest = Math.round(value / GRID_SIZE) * GRID_SIZE;
 
-  return Math.abs(nearest - value) <= SNAP_THRESHOLD ? nearest : roundFrameValue(value);
+  return Math.abs(nearest - value) <= SNAP_THRESHOLD
+    ? nearest
+    : roundFrameValue(value);
 }
 
-function createNodeForTool(tool: InsertTool, template: DocumentTemplate, point: Pick<Frame, "x" | "y">): DocNode {
+function createNodeForTool(
+  tool: InsertTool,
+  template: DocumentTemplate,
+  point: Pick<Frame, "x" | "y">,
+): DocNode {
   const x = Math.max(0, roundFrameValue(point.x));
   const y = Math.max(0, roundFrameValue(point.y));
 
@@ -2871,7 +3277,13 @@ function createNodeForTool(tool: InsertTool, template: DocumentTemplate, point: 
       type: "text",
       frame: { x, y, width: 180, height: 28 },
       content: [{ kind: "text", text: "Text" }],
-      style: { fontFamily: "Geist", fontSize: 16, fontWeight: 500, lineHeight: 1.2, color: "#111827" }
+      style: {
+        fontFamily: "Geist",
+        fontSize: 16,
+        fontWeight: 500,
+        lineHeight: 1.2,
+        color: "#111827",
+      },
     } satisfies TextNode;
   }
 
@@ -2882,7 +3294,7 @@ function createNodeForTool(tool: InsertTool, template: DocumentTemplate, point: 
       frame: { x, y, width: 180, height: 120 },
       source: { kind: "binding", binding: { path: "image.url" } },
       fit: "contain",
-      alt: "Image"
+      alt: "Image",
     } satisfies ImageNode;
   }
 
@@ -2892,7 +3304,7 @@ function createNodeForTool(tool: InsertTool, template: DocumentTemplate, point: 
       type: "barcode",
       format: "code128",
       frame: { x, y, width: 180, height: 48 },
-      value: { kind: "binding", binding: { path: "shipment.bolNumber" } }
+      value: { kind: "binding", binding: { path: "shipment.bolNumber" } },
     } satisfies BarcodeNode;
   }
 
@@ -2901,7 +3313,7 @@ function createNodeForTool(tool: InsertTool, template: DocumentTemplate, point: 
       id: createNodeId(template, "qr"),
       type: "qr",
       frame: { x, y, width: 72, height: 72 },
-      value: { kind: "binding", binding: { path: "shipment.trackingUrl" } }
+      value: { kind: "binding", binding: { path: "shipment.trackingUrl" } },
     } satisfies QrNode;
   }
 
@@ -2911,7 +3323,7 @@ function createNodeForTool(tool: InsertTool, template: DocumentTemplate, point: 
       type: "shape",
       shape: "line",
       frame: { x, y, width: 180, height: 2 },
-      style: { fill: "#111827", stroke: "#111827", strokeWidth: 1, radius: 0 }
+      style: { fill: "#111827", stroke: "#111827", strokeWidth: 1, radius: 0 },
     } satisfies ShapeNode;
   }
 
@@ -2921,7 +3333,7 @@ function createNodeForTool(tool: InsertTool, template: DocumentTemplate, point: 
       type: "shape",
       shape: "ellipse",
       frame: { x, y, width: 96, height: 96 },
-      style: { fill: "#f8fafc", stroke: "#94a3b8", strokeWidth: 1 }
+      style: { fill: "#f8fafc", stroke: "#94a3b8", strokeWidth: 1 },
     } satisfies ShapeNode;
   }
 
@@ -2930,10 +3342,22 @@ function createNodeForTool(tool: InsertTool, template: DocumentTemplate, point: 
       { id: "qty", label: "QTY", width: 64 },
       { id: "description", label: "DESCRIPTION", width: 210 },
       { id: "weight", label: "WEIGHT", width: 92 },
-      { id: "pieces", label: "PIECES", width: 88 }
+      { id: "pieces", label: "PIECES", width: 88 },
     ];
-    const headerStyle = { fontFamily: "Geist", fontSize: 10, fontWeight: 800, lineHeight: 1.2, color: "#111827" };
-    const rowStyle = { fontFamily: "Geist", fontSize: 11, fontWeight: 500, lineHeight: 1.2, color: "#111827" };
+    const headerStyle = {
+      fontFamily: "Geist",
+      fontSize: 10,
+      fontWeight: 800,
+      lineHeight: 1.2,
+      color: "#111827",
+    };
+    const rowStyle = {
+      fontFamily: "Geist",
+      fontSize: 11,
+      fontWeight: 500,
+      lineHeight: 1.2,
+      color: "#111827",
+    };
 
     return {
       id: createNodeId(template, "table"),
@@ -2948,13 +3372,20 @@ function createNodeForTool(tool: InsertTool, template: DocumentTemplate, point: 
             {
               id: createNodeId(template, `table-${column.id}-header`),
               type: "text",
-              frame: { x: 8, y: 8, width: Math.max(24, column.width - 16), height: 14 },
-              content: [{ kind: "text", text: column.label ?? column.id.toUpperCase() }],
-              style: headerStyle
-            } satisfies TextNode
+              frame: {
+                x: 8,
+                y: 8,
+                width: Math.max(24, column.width - 16),
+                height: 14,
+              },
+              content: [
+                { kind: "text", text: column.label ?? column.id.toUpperCase() },
+              ],
+              style: headerStyle,
+            } satisfies TextNode,
           ],
-          style: { fill: "#f8fafc", stroke: "#d8dee8", strokeWidth: 1 }
-        }))
+          style: { fill: "#f8fafc", stroke: "#d8dee8", strokeWidth: 1 },
+        })),
       },
       row: {
         cells: columns.map((column) => ({
@@ -2963,14 +3394,25 @@ function createNodeForTool(tool: InsertTool, template: DocumentTemplate, point: 
             {
               id: createNodeId(template, `table-${column.id}-cell`),
               type: "text",
-              frame: { x: 8, y: 8, width: Math.max(24, column.width - 16), height: 14 },
-              content: [{ kind: "field", label: column.label ?? column.id, binding: { path: `item.${column.id}` } }],
-              style: rowStyle
-            } satisfies TextNode
+              frame: {
+                x: 8,
+                y: 8,
+                width: Math.max(24, column.width - 16),
+                height: 14,
+              },
+              content: [
+                {
+                  kind: "field",
+                  label: column.label ?? column.id,
+                  binding: { path: `item.${column.id}` },
+                },
+              ],
+              style: rowStyle,
+            } satisfies TextNode,
           ],
-          style: { fill: "#ffffff", stroke: "#d8dee8", strokeWidth: 1 }
-        }))
-      }
+          style: { fill: "#ffffff", stroke: "#d8dee8", strokeWidth: 1 },
+        })),
+      },
     } satisfies GridNode;
   }
 
@@ -2988,17 +3430,45 @@ function createNodeForTool(tool: InsertTool, template: DocumentTemplate, point: 
           type: "shape",
           shape: "rectangle",
           frame: { x: 0, y: 0, width: 360, height: 36 },
-          style: { fill: "#ffffff", stroke: "#d8dee8", strokeWidth: 1, radius: 0 }
+          style: {
+            fill: "#ffffff",
+            stroke: "#d8dee8",
+            strokeWidth: 1,
+            radius: 0,
+          },
         },
         {
           id: createNodeId(template, "repeat-row-text"),
           type: "text",
           frame: { x: 12, y: 10, width: 220, height: 16 },
-          content: [{ kind: "field", label: "Item name", binding: { path: "item.name" } }],
-          style: { fontFamily: "Geist", fontSize: 12, fontWeight: 500, lineHeight: 1.2, color: "#111827" }
-        }
-      ]
+          content: [
+            {
+              kind: "field",
+              label: "Item name",
+              binding: { path: "item.name" },
+            },
+          ],
+          style: {
+            fontFamily: "Geist",
+            fontSize: 12,
+            fontWeight: 500,
+            lineHeight: 1.2,
+            color: "#111827",
+          },
+        },
+      ],
     } satisfies RepeatNode;
+  }
+
+  if (tool === "condition") {
+    return {
+      id: createNodeId(template, "conditional"),
+      type: "conditional",
+      frame: { x, y, width: 240, height: 120 },
+      condition: { source: "field.path" },
+      children: [],
+      fallback: [],
+    } satisfies ConditionalNode;
   }
 
   if (tool === "frame") {
@@ -3007,7 +3477,7 @@ function createNodeForTool(tool: InsertTool, template: DocumentTemplate, point: 
       type: "group",
       frame: { x, y, width: 240, height: 160 },
       name: "Frame",
-      children: []
+      children: [],
     } satisfies GroupNode;
   }
 
@@ -3023,23 +3493,40 @@ function createNodeForTool(tool: InsertTool, template: DocumentTemplate, point: 
           type: "shape",
           shape: "line",
           frame: { x: 12, y: 42, width: 120, height: 1 },
-          style: { fill: "#94a3b8", stroke: "#94a3b8", strokeWidth: 1, radius: 0 }
+          style: {
+            fill: "#94a3b8",
+            stroke: "#94a3b8",
+            strokeWidth: 1,
+            radius: 0,
+          },
         },
         {
           id: createNodeId(template, "signature-label"),
           type: "text",
           frame: { x: 12, y: 12, width: 132, height: 14 },
           content: [{ kind: "text", text: "Signature" }],
-          style: { fontFamily: "Geist", fontSize: 10, fontWeight: 700, lineHeight: 1.2, color: "#111827" }
+          style: {
+            fontFamily: "Geist",
+            fontSize: 10,
+            fontWeight: 700,
+            lineHeight: 1.2,
+            color: "#111827",
+          },
         },
         {
           id: createNodeId(template, "signature-date"),
           type: "text",
           frame: { x: 12, y: 52, width: 92, height: 12 },
           content: [{ kind: "text", text: "Date:" }],
-          style: { fontFamily: "Geist", fontSize: 9, fontWeight: 700, lineHeight: 1.2, color: "#111827" }
-        }
-      ]
+          style: {
+            fontFamily: "Geist",
+            fontSize: 9,
+            fontWeight: 700,
+            lineHeight: 1.2,
+            color: "#111827",
+          },
+        },
+      ],
     } satisfies GroupNode;
   }
 
@@ -3048,8 +3535,156 @@ function createNodeForTool(tool: InsertTool, template: DocumentTemplate, point: 
     type: "shape",
     shape: "rectangle",
     frame: { x, y, width: 160, height: 96 },
-    style: { fill: "#ffffff", stroke: "#94a3b8", strokeWidth: 1, radius: 0 }
+    style: { fill: "#ffffff", stroke: "#94a3b8", strokeWidth: 1, radius: 0 },
   } satisfies ShapeNode;
+}
+
+function duplicateNodeInTemplate(
+  template: DocumentTemplate,
+  nodeId: string,
+): string | undefined {
+  const existingIds = new Set<string>();
+
+  for (const page of template.pages) {
+    for (const layer of page.layers) {
+      collectNodeIds(layer.nodes, existingIds);
+    }
+  }
+
+  for (const page of template.pages) {
+    for (const layer of page.layers) {
+      const duplicatedId = duplicateNodeInCollection(
+        layer.nodes,
+        nodeId,
+        existingIds,
+      );
+
+      if (duplicatedId) {
+        return duplicatedId;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function duplicateNodeInCollection(
+  nodes: EditableNode[],
+  nodeId: string,
+  existingIds: Set<string>,
+): string | undefined {
+  for (const [index, node] of nodes.entries()) {
+    if (node.id === nodeId) {
+      const duplicate = structuredClone(node);
+      duplicate.frame = {
+        ...duplicate.frame,
+        x: roundFrameValue(duplicate.frame.x + 16),
+        y: roundFrameValue(duplicate.frame.y + 16),
+      };
+      assignDuplicateNodeIds(duplicate, existingIds);
+      nodes.splice(index + 1, 0, duplicate);
+
+      return duplicate.id;
+    }
+
+    for (const children of childCollectionsForNode(node)) {
+      const duplicatedId = duplicateNodeInCollection(
+        children,
+        nodeId,
+        existingIds,
+      );
+
+      if (duplicatedId) {
+        return duplicatedId;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function deleteNodeFromTemplate(
+  template: DocumentTemplate,
+  nodeId: string,
+): boolean {
+  for (const page of template.pages) {
+    for (const layer of page.layers) {
+      if (deleteNodeFromCollection(layer.nodes, nodeId)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function deleteNodeFromCollection(
+  nodes: EditableNode[],
+  nodeId: string,
+): boolean {
+  const index = nodes.findIndex((node) => node.id === nodeId);
+
+  if (index >= 0) {
+    nodes.splice(index, 1);
+    return true;
+  }
+
+  for (const node of nodes) {
+    for (const children of childCollectionsForNode(node)) {
+      if (deleteNodeFromCollection(children, nodeId)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function assignDuplicateNodeIds(
+  node: EditableNode,
+  existingIds: Set<string>,
+): void {
+  node.id = nextDuplicateNodeId(node.id, existingIds);
+  existingIds.add(node.id);
+
+  for (const children of childCollectionsForNode(node)) {
+    for (const child of children) {
+      assignDuplicateNodeIds(child, existingIds);
+    }
+  }
+}
+
+function nextDuplicateNodeId(baseId: string, existingIds: Set<string>): string {
+  let candidate = `${baseId}-copy`;
+  let index = 2;
+
+  while (existingIds.has(candidate)) {
+    candidate = `${baseId}-copy-${index}`;
+    index += 1;
+  }
+
+  return candidate;
+}
+
+function childCollectionsForNode(node: EditableNode): EditableNode[][] {
+  if (
+    node.type === "group" ||
+    node.type === "flowRegion" ||
+    node.type === "section" ||
+    node.type === "stack"
+  ) {
+    return [node.children];
+  }
+
+  if (node.type === "repeat") {
+    return node.emptyState ? [node.children, node.emptyState] : [node.children];
+  }
+
+  if (node.type === "conditional") {
+    return node.fallback ? [node.children, node.fallback] : [node.children];
+  }
+
+  return [];
 }
 
 function getWritableFixedLayer(layers: PageLayer[]): PageLayer | undefined {
@@ -3059,7 +3694,7 @@ function getWritableFixedLayer(layers: PageLayer[]): PageLayer | undefined {
     layer = {
       id: "fixed",
       kind: "fixed",
-      nodes: []
+      nodes: [],
     };
     layers.push(layer);
   }
@@ -3091,7 +3726,12 @@ function collectNodeIds(nodes: EditableNode[], ids: Set<string>): void {
   for (const node of nodes) {
     ids.add(node.id);
 
-    if (node.type === "group" || node.type === "flowRegion" || node.type === "stack") {
+    if (
+      node.type === "group" ||
+      node.type === "flowRegion" ||
+      node.type === "section" ||
+      node.type === "stack"
+    ) {
       collectNodeIds(node.children, ids);
     }
 
@@ -3131,11 +3771,13 @@ function getBounds(frames: Frame[]): Frame {
     x: left,
     y: top,
     width: right - left,
-    height: bottom - top
+    height: bottom - top,
   };
 }
 
-function containerToneColor(tone: Extract<EditorVisual, { kind: "container" }>["tone"]): string {
+function containerToneColor(
+  tone: Extract<EditorVisual, { kind: "container" }>["tone"],
+): string {
   if (tone === "repeat") {
     return "#7c3aed";
   }
@@ -3160,7 +3802,9 @@ function buildFontImports(template: DocumentTemplate): string {
 
       if (font.source?.kind === "google-font") {
         const family = font.source.family.replace(/\s+/g, "+");
-        const weights = font.source.weights?.length ? `:wght@${font.source.weights.join(";")}` : "";
+        const weights = font.source.weights?.length
+          ? `:wght@${font.source.weights.join(";")}`
+          : "";
         const display = font.source.display ?? "swap";
 
         return `@import url("https://fonts.googleapis.com/css2?family=${family}${weights}&display=${display}");`;
@@ -3180,11 +3824,11 @@ const shellStyle: CSSProperties = {
   width: "100%",
   overflow: "hidden",
   display: "grid",
-  gridTemplateColumns: "60px 300px minmax(0, 1fr) 344px",
+  gridTemplateColumns: `60px 300px minmax(0, 1fr) ${INSPECTOR_PANEL_WIDTH}px`,
   gridTemplateRows: "60px minmax(0, 1fr)",
   background: "#eef2f6",
   color: "#111827",
-  fontFamily: UI_FONT_FAMILY
+  fontFamily: UI_FONT_FAMILY,
 };
 
 const toolRailStyle: CSSProperties = {
@@ -3201,7 +3845,7 @@ const toolRailStyle: CSSProperties = {
   padding: "12px 0",
   borderRight: "1px solid #d8dee8",
   background: "#ffffff",
-  overflow: "visible"
+  overflow: "visible",
 };
 
 const toolButtonStyle: CSSProperties = {
@@ -3214,14 +3858,14 @@ const toolButtonStyle: CSSProperties = {
   borderRadius: 6,
   background: "transparent",
   color: "#111827",
-  cursor: "pointer"
+  cursor: "pointer",
 };
 
 const railIconStyle: CSSProperties = {
   display: "grid",
   placeItems: "center",
   width: 16,
-  height: 16
+  height: 16,
 };
 
 const toolTooltipStyle: CSSProperties = {
@@ -3238,7 +3882,7 @@ const toolTooltipStyle: CSSProperties = {
   boxShadow: "0 10px 24px rgba(15, 23, 42, 0.18)",
   font: `700 11px/1 ${UI_FONT_FAMILY}`,
   whiteSpace: "nowrap",
-  pointerEvents: "none"
+  pointerEvents: "none",
 };
 
 const toolSectionLabelStyle: CSSProperties = {
@@ -3247,7 +3891,7 @@ const toolSectionLabelStyle: CSSProperties = {
   color: "#64748b",
   fontSize: 10,
   fontWeight: 800,
-  textAlign: "left"
+  textAlign: "left",
 };
 
 const toolShortcutStyle: CSSProperties = {
@@ -3264,7 +3908,7 @@ const toolShortcutStyle: CSSProperties = {
   whiteSpace: "nowrap",
   fontSize: 10,
   fontWeight: 900,
-  color: "#334155"
+  color: "#334155",
 };
 
 const toolLabelStyle: CSSProperties = {
@@ -3275,20 +3919,20 @@ const toolLabelStyle: CSSProperties = {
   whiteSpace: "nowrap",
   fontSize: 12,
   fontWeight: 750,
-  textAlign: "left"
+  textAlign: "left",
 };
 
 const insertPanelStyle: CSSProperties = {
   minHeight: 0,
   overflow: "hidden",
-  borderBottom: "1px solid #e5e7eb"
+  borderBottom: "1px solid #e5e7eb",
 };
 
 const insertGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
   gap: 6,
-  padding: "0 10px 12px"
+  padding: "0 10px 12px",
 };
 
 const insertToolButtonStyle: CSSProperties = {
@@ -3302,14 +3946,14 @@ const insertToolButtonStyle: CSSProperties = {
   border: "1px solid #e5e7eb",
   borderRadius: 6,
   background: "#ffffff",
-  cursor: "pointer"
+  cursor: "pointer",
 };
 
 const insertToolIconStyle: CSSProperties = {
   display: "block",
   width: 16,
   height: 16,
-  objectFit: "contain"
+  objectFit: "contain",
 };
 
 const insertToolLabelStyle: CSSProperties = {
@@ -3319,29 +3963,55 @@ const insertToolLabelStyle: CSSProperties = {
   whiteSpace: "nowrap",
   color: "inherit",
   font: `700 10px/1 ${UI_FONT_FAMILY}`,
-  textAlign: "left"
+  textAlign: "left",
 };
 
 const leftPanelStyle: CSSProperties = {
   gridColumn: 2,
   gridRow: 2,
+  position: "relative",
   height: "100%",
   minHeight: 0,
   display: "grid",
   gridTemplateRows: "minmax(0, 1fr) 286px",
   borderRight: "1px solid #d8dee8",
   background: "#ffffff",
-  overflow: "hidden"
+  overflow: "hidden",
 };
 
 const rightPanelStyle: CSSProperties = {
   gridColumn: 4,
   gridRow: 2,
+  position: "relative",
+  width: INSPECTOR_PANEL_WIDTH,
+  minWidth: INSPECTOR_PANEL_WIDTH,
+  maxWidth: INSPECTOR_PANEL_WIDTH,
   height: "100%",
   minHeight: 0,
-  borderLeft: "1px solid #d8dee8",
+  borderLeft: "1px solid #eceef3",
   background: "#ffffff",
-  overflowY: "auto"
+  overflow: "hidden",
+};
+
+const inspectorResizeHandleStyle: CSSProperties = {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  bottom: 0,
+  width: 8,
+  zIndex: 30,
+  cursor: "col-resize",
+  touchAction: "none",
+};
+
+const panelRowResizeHandleStyle: CSSProperties = {
+  position: "absolute",
+  left: 0,
+  right: 0,
+  height: 8,
+  zIndex: 30,
+  cursor: "row-resize",
+  touchAction: "none",
 };
 
 const mainStyle: CSSProperties = {
@@ -3352,112 +4022,129 @@ const mainStyle: CSSProperties = {
   minHeight: 0,
   display: "grid",
   gridTemplateRows: "minmax(0, 1fr)",
-  overflow: "hidden"
+  overflow: "hidden",
 };
 
 const topToolbarStyle: CSSProperties = {
   gridColumn: "1 / -1",
   gridRow: 1,
+  position: "relative",
+  zIndex: 120,
   height: 60,
   minWidth: 0,
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  gap: 12,
-  padding: "0 14px",
+  gap: 24,
+  padding: "0 24px",
   background: "#ffffff",
-  borderBottom: "1px solid #d8dee8",
-  overflow: "hidden"
+  borderBottom: "1px solid #e5e7eb",
+  overflow: "visible",
 };
 
 const toolbarGroupStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 6,
-  flex: "0 0 auto"
+  gap: 10,
+  flex: "0 0 auto",
 };
 
 const toolbarClusterStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 4,
+  gap: 8,
   flex: "0 0 auto",
-  padding: "0 8px",
-  borderLeft: "1px solid #edf0f5"
+  padding: 0,
 };
 
 const toolbarBrandGroupStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 10,
+  gap: 12,
   flex: "0 0 auto",
-  minWidth: 296
+  minWidth: 460,
 };
 
 const toolbarCenterStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  gap: 4,
+  gap: 28,
   minWidth: 0,
   flex: "1 1 auto",
-  overflowX: "auto",
-  scrollbarWidth: "none"
+  overflow: "visible",
+  scrollbarWidth: "none",
 };
 
 const brandMarkStyle: CSSProperties = {
-  width: 26,
-  height: 26,
+  width: 30,
+  height: 30,
   display: "grid",
   placeItems: "center",
-  borderRadius: 7,
-  background: "#4f46e5",
+  borderRadius: 8,
+  background: "linear-gradient(135deg, #6d5dfc 0%, #4f46e5 55%, #7c3aed 100%)",
   color: "#ffffff",
-  fontWeight: 900,
-  fontSize: 13
+  boxShadow:
+    "inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 1px 2px rgba(79, 70, 229, 0.22)",
+};
+
+const brandMarkIconStyle: CSSProperties = {
+  display: "grid",
+  placeItems: "center",
+  width: 17,
+  height: 17,
+  color: "#ffffff",
+  flex: "0 0 auto",
 };
 
 const brandNameStyle: CSSProperties = {
-  fontSize: 16,
+  color: "#111827",
+  fontSize: 18,
   fontWeight: 850,
-  letterSpacing: 0
+  letterSpacing: 0,
+};
+
+const toolbarDividerStyle: CSSProperties = {
+  width: 1,
+  height: 34,
+  margin: "0 12px",
+  background: "#e5e7eb",
+  flex: "0 0 auto",
 };
 
 const templateTitleStyle: CSSProperties = {
-  maxWidth: 190,
+  maxWidth: 260,
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-  paddingLeft: 14,
-  marginLeft: 4,
-  borderLeft: "1px solid #e5e7eb",
-  fontSize: 12,
+  fontSize: 13,
   fontWeight: 800,
-  color: "#111827"
+  color: "#111827",
 };
 
 const statusPillStyle: CSSProperties = {
-  padding: "3px 8px",
+  padding: "5px 10px",
   borderRadius: 999,
-  background: "#f1f5f9",
-  color: "#64748b",
-  fontSize: 10,
-  fontWeight: 800
+  background: "#f1f3f6",
+  color: "#667085",
+  fontSize: 11,
+  fontWeight: 800,
 };
 
 const toolbarButtonStyle: CSSProperties = {
-  height: 32,
-  minWidth: 32,
-  padding: "0 9px",
+  height: 36,
+  minWidth: 36,
+  padding: "0 13px",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
   gap: 6,
-  border: "1px solid #d0d7e2",
-  borderRadius: 5,
+  border: "1px solid #d7dce4",
+  borderRadius: 7,
   background: "#ffffff",
   color: "#111827",
-  font: `700 11px/1 ${UI_FONT_FAMILY}`
+  font: `800 13px/1 ${UI_FONT_FAMILY}`,
+  boxShadow: "0 1px 1px rgba(16, 24, 40, 0.02)",
 };
 
 const toolbarIconStyle: CSSProperties = {
@@ -3465,63 +4152,97 @@ const toolbarIconStyle: CSSProperties = {
   placeItems: "center",
   width: 16,
   height: 16,
-  flex: "0 0 auto"
+  flex: "0 0 auto",
 };
 
 const dropdownWrapStyle: CSSProperties = {
   position: "relative",
-  display: "inline-flex"
+  display: "inline-flex",
+  overflow: "visible",
 };
 
-const splitButtonStyle: CSSProperties = {
+const zoomDropdownWrapStyle: CSSProperties = {
+  alignItems: "center",
+};
+
+const zoomControlStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  height: 32,
-  border: "1px solid #d0d7e2",
-  borderRadius: 5,
+  height: 38,
+  border: "1px solid #d7dce4",
+  borderRadius: 7,
   overflow: "hidden",
-  background: "#ffffff"
-};
-
-const previewMainButtonStyle: CSSProperties = {
-  height: 30,
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  padding: "0 9px",
-  border: 0,
-  borderRight: "1px solid #e5e7eb",
   background: "#ffffff",
-  color: "#111827",
-  font: `800 11px/1 ${UI_FONT_FAMILY}`,
-  cursor: "pointer"
+  boxShadow: "0 1px 1px rgba(16, 24, 40, 0.02)",
 };
 
-const previewChevronButtonStyle: CSSProperties = {
-  width: 28,
-  height: 30,
+const zoomControlButtonStyle: CSSProperties = {
+  width: 34,
+  height: 36,
   display: "grid",
   placeItems: "center",
   padding: 0,
   border: 0,
   background: "#ffffff",
-  color: "#475569",
-  cursor: "pointer"
+  color: "#4b5563",
+  cursor: "pointer",
+};
+
+const zoomControlValueStyle: CSSProperties = {
+  height: 36,
+  minWidth: 76,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 4,
+  padding: "0 10px",
+  border: 0,
+  borderLeft: "1px solid #edf0f5",
+  borderRight: "1px solid #edf0f5",
+  background: "#ffffff",
+  color: "#111827",
+  cursor: "default",
+  font: `850 13px/1 ${UI_MONO_FONT_FAMILY}`,
+};
+
+const previewButtonStyle: CSSProperties = {
+  height: 38,
+  minWidth: 120,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  padding: "0 16px",
+  border: "1px solid #d7dce4",
+  borderRadius: 7,
+  background: "#ffffff",
+  color: "#111827",
+  boxShadow: "0 1px 1px rgba(16, 24, 40, 0.02)",
+  cursor: "pointer",
+  font: `850 13px/1 ${UI_FONT_FAMILY}`,
 };
 
 const toolbarDropdownStyle: CSSProperties = {
   position: "absolute",
   right: 0,
-  top: 38,
-  zIndex: 80,
-  width: 228,
+  top: 44,
+  zIndex: 500,
+  width: 248,
   display: "grid",
   gap: 2,
   padding: 6,
   border: "1px solid #d8dee8",
   borderRadius: 8,
   background: "#ffffff",
-  boxShadow: "0 18px 38px rgba(15, 23, 42, 0.16)"
+  boxShadow: "0 18px 38px rgba(15, 23, 42, 0.16)",
+};
+
+const zoomDropdownStyle: CSSProperties = {
+  ...toolbarDropdownStyle,
+  left: "50%",
+  right: "auto",
+  width: 196,
+  transform: "translateX(-50%)",
 };
 
 const dropdownItemStyle: CSSProperties = {
@@ -3533,37 +4254,18 @@ const dropdownItemStyle: CSSProperties = {
   borderRadius: 6,
   background: "transparent",
   color: "#111827",
-  textAlign: "left"
+  textAlign: "left",
 };
 
 const dropdownItemLabelStyle: CSSProperties = {
   fontSize: 12,
-  fontWeight: 800
+  fontWeight: 800,
 };
 
 const dropdownItemDetailStyle: CSSProperties = {
   color: "#64748b",
   fontFamily: UI_MONO_FONT_FAMILY,
-  fontSize: 10
-};
-
-const selectStyle: CSSProperties = {
-  height: 32,
-  maxWidth: 170,
-  border: "1px solid #d0d7e2",
-  borderRadius: 5,
-  background: "#ffffff",
-  color: "#111827",
-  font: `600 12px/1 ${UI_FONT_FAMILY}`
-};
-
-const zoomLabelStyle: CSSProperties = {
-  width: 44,
-  textAlign: "center",
-  fontFamily: UI_MONO_FONT_FAMILY,
-  fontSize: 12,
-  fontWeight: 700,
-  color: "#334155"
+  fontSize: 10,
 };
 
 const canvasViewportStyle: CSSProperties = {
@@ -3574,73 +4276,16 @@ const canvasViewportStyle: CSSProperties = {
   display: "grid",
   placeItems: "center",
   padding: 48,
-  background: "#e8edf4"
+  background: "#e8edf4",
 };
 
 const canvasBoardStyle: CSSProperties = {
   position: "relative",
-  flex: "0 0 auto"
-};
-
-const canvasPageControlStyle: CSSProperties = {
-  position: "absolute",
-  left: "50%",
-  bottom: 18,
-  zIndex: 30,
-  display: "flex",
-  alignItems: "center",
-  gap: 4,
-  padding: 6,
-  border: "1px solid #d8dee8",
-  borderRadius: 8,
-  background: "#ffffff",
-  boxShadow: "0 8px 22px rgba(15, 23, 42, 0.08)",
-  transform: "translateX(-50%)"
-};
-
-const canvasPageControlLabelStyle: CSSProperties = {
-  minWidth: 150,
-  padding: "0 10px",
-  color: "#334155",
-  fontSize: 12,
-  fontWeight: 750,
-  textAlign: "center"
-};
-
-const canvasDockStyle: CSSProperties = {
-  position: "absolute",
-  left: 18,
-  bottom: 18,
-  zIndex: 30,
-  display: "flex",
-  alignItems: "center",
-  gap: 4,
-  padding: 6,
-  border: "1px solid #d8dee8",
-  borderRadius: 8,
-  background: "rgba(255, 255, 255, 0.94)",
-  boxShadow: "0 10px 26px rgba(15, 23, 42, 0.12)",
-  backdropFilter: "blur(10px)"
-};
-
-const canvasDockZoomStyle: CSSProperties = {
-  minWidth: 46,
-  color: "#334155",
-  fontFamily: UI_MONO_FONT_FAMILY,
-  fontSize: 12,
-  fontWeight: 800,
-  textAlign: "center"
-};
-
-const dockSeparatorStyle: CSSProperties = {
-  width: 1,
-  height: 20,
-  margin: "0 3px",
-  background: "#e5e7eb"
+  flex: "0 0 auto",
 };
 
 const scaledPageWrapStyle: CSSProperties = {
-  position: "absolute"
+  position: "absolute",
 };
 
 const pageCanvasStyle: CSSProperties = {
@@ -3649,7 +4294,7 @@ const pageCanvasStyle: CSSProperties = {
   backgroundColor: "#ffffff",
   border: "1px solid #cbd5e1",
   boxShadow: "0 6px 16px rgba(15, 23, 42, 0.07)",
-  overflow: "hidden"
+  overflow: "hidden",
 };
 
 const pageBadgeStyle: CSSProperties = {
@@ -3661,7 +4306,7 @@ const pageBadgeStyle: CSSProperties = {
   color: "#ffffff",
   font: `800 9px/1.2 ${UI_MONO_FONT_FAMILY}`,
   whiteSpace: "nowrap",
-  pointerEvents: "none"
+  pointerEvents: "none",
 };
 
 const selectionHandleStyle: CSSProperties = {
@@ -3670,7 +4315,7 @@ const selectionHandleStyle: CSSProperties = {
   height: 8,
   border: "1px solid #2563eb",
   borderRadius: 2,
-  background: "#ffffff"
+  background: "#ffffff",
 };
 
 const repeatPlaceholderStyle: CSSProperties = {
@@ -3688,7 +4333,7 @@ const repeatPlaceholderStyle: CSSProperties = {
   background: "rgba(124, 58, 237, 0.06)",
   font: `11px/1.35 ${UI_FONT_FAMILY}`,
   textAlign: "center",
-  pointerEvents: "none"
+  pointerEvents: "none",
 };
 
 const rulerCornerStyle: CSSProperties = {
@@ -3699,7 +4344,7 @@ const rulerCornerStyle: CSSProperties = {
   height: RULER_SIZE,
   borderRight: "1px solid #cbd5e1",
   borderBottom: "1px solid #cbd5e1",
-  background: "#f8fafc"
+  background: "#f8fafc",
 };
 
 const topRulerStyle: CSSProperties = {
@@ -3709,7 +4354,7 @@ const topRulerStyle: CSSProperties = {
   height: RULER_SIZE,
   right: 0,
   borderBottom: "1px solid #cbd5e1",
-  background: "#f8fafc"
+  background: "#f8fafc",
 };
 
 const leftRulerStyle: CSSProperties = {
@@ -3719,7 +4364,7 @@ const leftRulerStyle: CSSProperties = {
   width: RULER_SIZE,
   bottom: 0,
   borderRight: "1px solid #cbd5e1",
-  background: "#f8fafc"
+  background: "#f8fafc",
 };
 
 const topRulerTickStyle: CSSProperties = {
@@ -3729,7 +4374,7 @@ const topRulerTickStyle: CSSProperties = {
   borderLeft: "1px solid #94a3b8",
   paddingLeft: 3,
   color: "#64748b",
-  font: `9px/1 ${UI_MONO_FONT_FAMILY}`
+  font: `9px/1 ${UI_MONO_FONT_FAMILY}`,
 };
 
 const leftRulerTickStyle: CSSProperties = {
@@ -3740,33 +4385,33 @@ const leftRulerTickStyle: CSSProperties = {
   paddingTop: 2,
   color: "#64748b",
   font: `9px/1 ${UI_MONO_FONT_FAMILY}`,
-  writingMode: "vertical-rl"
+  writingMode: "vertical-rl",
 };
 
 const verticalGuideStyle: CSSProperties = {
   position: "absolute",
   width: 1,
   cursor: "ew-resize",
-  zIndex: 8
+  zIndex: 8,
 };
 
 const horizontalGuideStyle: CSSProperties = {
   position: "absolute",
   height: 1,
   cursor: "ns-resize",
-  zIndex: 8
+  zIndex: 8,
 };
 
 const pagesPanelStyle: CSSProperties = {
   minHeight: 0,
   overflow: "hidden",
-  borderBottom: "1px solid #e5e7eb"
+  borderBottom: "1px solid #e5e7eb",
 };
 
 const pageListStyle: CSSProperties = {
   maxHeight: 94,
   overflowY: "auto",
-  padding: "0 10px 10px"
+  padding: "0 10px 10px",
 };
 
 const pageButtonStyle: CSSProperties = {
@@ -3779,12 +4424,12 @@ const pageButtonStyle: CSSProperties = {
   background: "transparent",
   color: "#111827",
   textAlign: "left",
-  cursor: "pointer"
+  cursor: "pointer",
 };
 
 const layersPanelStyle: CSSProperties = {
   minHeight: 0,
-  overflow: "hidden"
+  overflow: "hidden",
 };
 
 const layersHeaderStyle: CSSProperties = {
@@ -3794,7 +4439,7 @@ const layersHeaderStyle: CSSProperties = {
   justifyContent: "space-between",
   gap: 10,
   padding: "0 12px",
-  borderBottom: "1px solid #f2f4f7"
+  borderBottom: "1px solid #f2f4f7",
 };
 
 const layersAddButtonStyle: CSSProperties = {
@@ -3807,14 +4452,14 @@ const layersAddButtonStyle: CSSProperties = {
   background: "transparent",
   color: "#475467",
   font: `600 20px/1 ${UI_FONT_FAMILY}`,
-  cursor: "pointer"
+  cursor: "pointer",
 };
 
 const layerListStyle: CSSProperties = {
   height: "calc(100% - 42px)",
   minHeight: 0,
   overflowY: "auto",
-  padding: "6px 8px 14px"
+  padding: "6px 8px 14px",
 };
 
 const layerButtonStyle: CSSProperties = {
@@ -3827,7 +4472,7 @@ const layerButtonStyle: CSSProperties = {
   background: "transparent",
   color: "#111827",
   textAlign: "left",
-  cursor: "pointer"
+  cursor: "pointer",
 };
 
 const layerTreeRowStyle: CSSProperties = {
@@ -3838,31 +4483,33 @@ const layerTreeRowStyle: CSSProperties = {
   alignItems: "center",
   gap: 6,
   border: "1px solid transparent",
-  borderRadius: 6,
+  borderRadius: UI_CHROME_RADIUS,
   background: "transparent",
+  boxShadow: "none",
   color: "#667085",
   textAlign: "left",
   cursor: "pointer",
-  font: `500 14px/21px ${UI_FONT_FAMILY}`
+  font: `500 14px/21px ${UI_FONT_FAMILY}`,
+  outline: "none",
 };
 
 const layerTreeCaretStyle: CSSProperties = {
   width: 14,
   height: 14,
-  objectFit: "contain"
+  objectFit: "contain",
 };
 
 const layerTreeIconStyle: CSSProperties = {
   width: 16,
   height: 16,
-  objectFit: "contain"
+  objectFit: "contain",
 };
 
 const layerTreeLabelStyle: CSSProperties = {
   minWidth: 0,
   overflow: "hidden",
   textOverflow: "ellipsis",
-  whiteSpace: "nowrap"
+  whiteSpace: "nowrap",
 };
 
 const panelHeaderStyle: CSSProperties = {
@@ -3870,19 +4517,19 @@ const panelHeaderStyle: CSSProperties = {
   alignItems: "baseline",
   justifyContent: "space-between",
   gap: 10,
-  padding: "12px 12px 8px"
+  padding: "12px 12px 8px",
 };
 
 const panelTitleStyle: CSSProperties = {
   margin: 0,
   fontSize: 12,
-  fontWeight: 800
+  fontWeight: 800,
 };
 
 const panelDetailStyle: CSSProperties = {
   fontFamily: UI_MONO_FONT_FAMILY,
   fontSize: 10,
-  color: "#64748b"
+  color: "#64748b",
 };
 
 const layerNameStyle: CSSProperties = {
@@ -3891,7 +4538,7 @@ const layerNameStyle: CSSProperties = {
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
   fontSize: 12,
-  fontWeight: 700
+  fontWeight: 700,
 };
 
 const layerMetaStyle: CSSProperties = {
@@ -3901,29 +4548,74 @@ const layerMetaStyle: CSSProperties = {
   whiteSpace: "nowrap",
   fontFamily: UI_MONO_FONT_FAMILY,
   fontSize: 10,
-  color: "#64748b"
+  color: "#64748b",
 };
 
 const dataPanelStyle: CSSProperties = {
   minHeight: 0,
   borderTop: "1px solid #e5e7eb",
-  overflow: "hidden"
+  overflow: "hidden",
 };
 
 const dataFieldsStyle: CSSProperties = {
-  height: 202,
+  height: 178,
   overflowY: "auto",
-  padding: "0 10px 12px"
+  padding: "0 10px 12px",
+};
+
+const dataPanelStatusStyle: CSSProperties = {
+  minHeight: 20,
+  margin: "0 10px 8px",
+  padding: "4px 7px",
+  border: "1px solid #eef0f3",
+  borderRadius: UI_CHROME_RADIUS,
+  background: "#fbfcfe",
+  color: "#64748b",
+  fontSize: 10,
+  fontWeight: 700,
+};
+
+const dataGroupStyle: CSSProperties = {
+  display: "grid",
+  gap: 6,
+  marginBottom: 10,
+};
+
+const dataGroupHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  padding: "3px 2px",
+  color: "#0f172a",
+  fontSize: 10,
+  fontWeight: 850,
+  textTransform: "uppercase",
+  letterSpacing: 0,
+};
+
+const dataGroupDetailStyle: CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  color: "#94a3b8",
+  fontFamily: UI_MONO_FONT_FAMILY,
+  fontSize: 9,
+  fontWeight: 700,
+  textTransform: "none",
 };
 
 const dataFieldStyle: CSSProperties = {
   display: "grid",
   gap: 5,
   padding: "7px 8px",
-  borderRadius: 6,
-  background: "#f8fafc",
-  border: "1px solid #e5e7eb",
-  marginBottom: 6
+  borderRadius: UI_CHROME_RADIUS,
+  background: "#fbfcfe",
+  border: "1px solid transparent",
+  boxShadow:
+    "0 0 0 1px rgba(238, 240, 243, 0.95), 0 1px 2px rgba(15, 23, 42, 0.03)",
+  marginBottom: 6,
 };
 
 const dataSearchStyle: CSSProperties = {
@@ -3931,10 +4623,23 @@ const dataSearchStyle: CSSProperties = {
   height: 30,
   margin: "0 10px 8px",
   padding: "0 9px",
-  border: "1px solid #cbd5e1",
-  borderRadius: 6,
+  border: `1px solid ${UI_CHROME_BORDER}`,
+  borderRadius: UI_CHROME_RADIUS,
+  outline: "none",
+  background: "#ffffff",
+  boxShadow: UI_SURFACE_SHADOW,
   color: "#111827",
-  font: `12px/1.2 ${UI_FONT_FAMILY}`
+  font: `12px/1.2 ${UI_FONT_FAMILY}`,
+};
+
+const dataSearchFocusStyle: CSSProperties = {
+  borderColor: "#dbeafe",
+  boxShadow: UI_FOCUS_RING_SHADOW,
+};
+
+const dataSearchBlurStyle: CSSProperties = {
+  borderColor: UI_CHROME_BORDER,
+  boxShadow: UI_SURFACE_SHADOW,
 };
 
 const dataFieldHeaderStyle: CSSProperties = {
@@ -3942,24 +4647,58 @@ const dataFieldHeaderStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  gap: 8
+  gap: 8,
+};
+
+const dataFieldNameWrapStyle: CSSProperties = {
+  minWidth: 0,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+};
+
+const dataTreeToggleStyle: CSSProperties = {
+  width: 16,
+  height: 16,
+  display: "grid",
+  placeItems: "center",
+  padding: 0,
+  border: 0,
+  borderRadius: 4,
+  background: "transparent",
+  color: "#64748b",
+  cursor: "pointer",
+  flex: "0 0 auto",
+};
+
+const dataTreeToggleSpacerStyle: CSSProperties = {
+  width: 16,
+  height: 16,
+  flex: "0 0 auto",
 };
 
 const dataTypePillStyle: CSSProperties = {
   flex: "0 0 auto",
-  padding: "2px 5px",
-  border: "1px solid #e5e7eb",
-  borderRadius: 999,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: 18,
+  padding: "0 6px",
+  border: `1px solid ${UI_CHROME_BORDER}`,
+  borderRadius: 4,
+  background: "#ffffff",
+  boxShadow: UI_SURFACE_SHADOW,
   fontFamily: UI_MONO_FONT_FAMILY,
   fontSize: 9,
-  fontWeight: 800
+  fontWeight: 700,
+  lineHeight: 1,
 };
 
 const dataFieldActionsStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 5,
-  marginTop: 2
+  marginTop: 2,
 };
 
 const dataActionButtonStyle: CSSProperties = {
@@ -3968,250 +4707,27 @@ const dataActionButtonStyle: CSSProperties = {
   alignItems: "center",
   gap: 4,
   padding: "0 6px",
-  border: "1px solid #d8dee8",
-  borderRadius: 5,
-  background: "#ffffff",
-  color: "#334155",
-  font: `700 10px/1 ${UI_FONT_FAMILY}`
-};
-
-const inspectorStyle: CSSProperties = {
-  display: "grid",
-  gap: 10,
-  padding: 14
-};
-
-const noticeStyle: CSSProperties = {
-  padding: 8,
-  borderRadius: 6,
-  background: "#eff6ff",
-  border: "1px solid #bfdbfe",
-  color: "#1e3a8a",
-  fontSize: 11,
-  lineHeight: 1.4
-};
-
-const inspectorTabsStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-  borderBottom: "1px solid #e5e7eb",
-  margin: "-2px -14px 4px"
-};
-
-const inspectorTabStyle: CSSProperties = {
-  height: 38,
-  border: 0,
-  borderBottom: "2px solid transparent",
-  background: "transparent",
-  font: `700 12px/1 ${UI_FONT_FAMILY}`,
-  cursor: "pointer"
-};
-
-const inspectorSectionStackStyle: CSSProperties = {
-  display: "grid",
-  gap: 10
-};
-
-const inspectorSectionStyle: CSSProperties = {
-  display: "grid",
-  border: "1px solid #e5e7eb",
-  borderRadius: 8,
-  background: "#ffffff",
-  overflow: "hidden"
-};
-
-const inspectorSectionSummaryStyle: CSSProperties = {
-  minHeight: 36,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-  padding: "0 10px",
-  borderBottom: "1px solid #f2f4f7",
-  color: "#111827",
-  fontSize: 11,
-  fontWeight: 900,
-  textTransform: "uppercase",
-  letterSpacing: 0,
-  cursor: "pointer"
-};
-
-const inspectorSectionDetailStyle: CSSProperties = {
-  minWidth: 0,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  color: "#64748b",
-  fontFamily: UI_MONO_FONT_FAMILY,
-  fontSize: 10,
-  fontWeight: 700,
-  textTransform: "none"
-};
-
-const inspectorSectionBodyStyle: CSSProperties = {
-  display: "grid",
-  gap: 10,
-  padding: 10
-};
-
-const segmentedControlStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(0, 1fr))",
-  gap: 2,
-  padding: 2,
-  border: "1px solid #d8dee8",
-  borderRadius: 7,
-  background: "#f8fafc"
-};
-
-const segmentedButtonStyle: CSSProperties = {
-  minHeight: 26,
-  padding: "0 6px",
   border: "1px solid transparent",
-  borderRadius: 5,
-  background: "transparent",
-  font: `700 10px/1 ${UI_FONT_FAMILY}`,
-  cursor: "pointer"
-};
-
-const propertySectionStyle: CSSProperties = {
-  display: "grid",
-  gap: 10,
-  paddingBottom: 12,
-  borderBottom: "1px solid #e5e7eb"
-};
-
-const propertySubsectionStyle: CSSProperties = {
-  display: "grid",
-  gap: 8,
-  padding: 10,
-  border: "1px solid #e5e7eb",
-  borderRadius: 7,
-  background: "#f8fafc"
-};
-
-const sectionTitleStyle: CSSProperties = {
-  margin: "4px 0 0",
+  borderRadius: 4,
+  background: "#ffffff",
+  boxShadow:
+    "0 0 0 1px rgba(232, 236, 241, 0.95), 0 1px 2px rgba(15, 23, 42, 0.03)",
   color: "#334155",
-  fontSize: 11,
-  fontWeight: 900,
-  textTransform: "uppercase",
-  letterSpacing: 0
+  font: `700 10px/1 ${UI_FONT_FAMILY}`,
+  outline: "none",
 };
 
-const twoColumnGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 8
-};
-
-const readOnlyRowStyle: CSSProperties = {
-  display: "grid",
-  gap: 4
-};
-
-const inputRowStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "42px minmax(0, 1fr)",
-  gap: 8,
-  alignItems: "center"
-};
-
-const fieldLabelStyle: CSSProperties = {
-  fontSize: 11,
-  fontWeight: 800,
-  color: "#64748b"
-};
-
-const fieldValueStyle: CSSProperties = {
-  minWidth: 0,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  fontFamily: UI_MONO_FONT_FAMILY,
-  fontSize: 12,
-  color: "#111827"
-};
-
-const numberInputStyle: CSSProperties = {
-  height: 30,
-  width: "100%",
-  padding: "0 8px",
-  border: "1px solid #cbd5e1",
-  borderRadius: 5,
-  font: `12px/1 ${UI_MONO_FONT_FAMILY}`
-};
-
-const textInputStyle: CSSProperties = {
-  height: 30,
-  width: "100%",
-  minWidth: 0,
-  padding: "0 8px",
-  border: "1px solid #cbd5e1",
-  borderRadius: 5,
-  color: "#111827",
-  font: `12px/1.2 ${UI_FONT_FAMILY}`
-};
-
-const textAreaRowStyle: CSSProperties = {
-  display: "grid",
-  gap: 6
-};
-
-const textAreaInputStyle: CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  resize: "vertical",
-  padding: 8,
-  border: "1px solid #cbd5e1",
-  borderRadius: 5,
-  color: "#111827",
-  font: `12px/1.35 ${UI_MONO_FONT_FAMILY}`
-};
-
-const propertyToggleStyle: CSSProperties = {
-  minHeight: 32,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-  padding: "0 9px",
-  border: "1px solid #d8dee8",
-  borderRadius: 6,
-  font: `700 12px/1 ${UI_FONT_FAMILY}`,
-  cursor: "pointer"
-};
-
-const togglePillStyle: CSSProperties = {
-  padding: "2px 6px",
-  borderRadius: 999,
-  background: "rgba(255, 255, 255, 0.76)",
-  color: "inherit",
-  fontSize: 10,
-  fontWeight: 900
-};
-
-const dividerStyle: CSSProperties = {
-  height: 1,
-  background: "#e5e7eb",
-  margin: "2px 0"
-};
-
-const jsonPreviewStyle: CSSProperties = {
-  margin: 0,
-  padding: 10,
-  borderRadius: 6,
-  background: "#0f172a",
-  color: "#e2e8f0",
-  font: `11px/1.4 ${UI_MONO_FONT_FAMILY}`,
-  overflow: "auto"
+const dataActionButtonFocusStyle: CSSProperties = {
+  background: UI_SELECTION_BG,
+  boxShadow: UI_SELECTION_RING,
 };
 
 const emptyTextStyle: CSSProperties = {
   margin: 0,
-  padding: 14,
+  padding: 10,
   color: "#64748b",
-  fontSize: 13
+  fontSize: 10,
+  lineHeight: 1.35,
 };
 
 const previewOverlayStyle: CSSProperties = {
@@ -4220,7 +4736,7 @@ const previewOverlayStyle: CSSProperties = {
   zIndex: 100,
   display: "grid",
   gridTemplateRows: "48px minmax(0, 1fr)",
-  background: "rgba(15, 23, 42, 0.56)"
+  background: "rgba(15, 23, 42, 0.56)",
 };
 
 const previewToolbarStyle: CSSProperties = {
@@ -4229,11 +4745,11 @@ const previewToolbarStyle: CSSProperties = {
   justifyContent: "space-between",
   padding: "0 16px",
   background: "#ffffff",
-  borderBottom: "1px solid #d8dee8"
+  borderBottom: "1px solid #d8dee8",
 };
 
 const previewScrollStyle: CSSProperties = {
   minHeight: 0,
   overflow: "auto",
-  padding: 28
+  padding: 28,
 };
