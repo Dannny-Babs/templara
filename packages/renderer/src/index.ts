@@ -2,17 +2,23 @@ import type {
   AssetDefinition,
   BarcodeNode,
   BindingRef,
+  Box,
   ConditionalNode,
   DocNode,
   DocumentTemplate,
   DynamicValue,
+  ExpressionRef,
   FieldFormat,
   FieldRun,
   FlowNode,
   FlowRegionNode,
+  FormulaExpression,
+  FormulaOperand,
   FontDefinition,
   Frame,
+  GridCellTemplate,
   GridNode,
+  GridRowTemplate,
   GroupNode,
   ImageNode,
   ImageSource,
@@ -20,10 +26,12 @@ import type {
   PageTemplate,
   QrNode,
   RepeatNode,
+  SectionNode,
   ShapeNode,
   StackNode,
   TextNode,
-  TextStyle
+  TextStyle,
+  VariableDefinition
 } from "@templara/core";
 
 export interface RenderDocumentInput {
@@ -119,7 +127,7 @@ export interface RenderGeneratedNode extends BaseRenderNode {
 export interface RenderDebugBox {
   id: string;
   sourceNodeId: string;
-  kind: "flow-region" | "repeat-frame" | "repeat-row" | "page-break" | "measured-text";
+  kind: "flow-region" | "section-frame" | "repeat-frame" | "repeat-row" | "page-break" | "measured-text";
   frame: Frame;
   label: string;
   color: string;
@@ -181,6 +189,7 @@ interface RenderState {
   pages: RenderPage[];
   warnings: RenderWarning[];
   repeatAnalyses: RepeatFitAnalysis[];
+  variableStack: string[];
 }
 
 interface Scope {
@@ -220,10 +229,22 @@ interface RepeatRowOptimization {
   fixedRowsFitOnStartPage: number;
 }
 
+type GridRowKind = "header" | "body" | "footer";
+
+interface GridRowPlan {
+  kind: GridRowKind;
+  template: GridRowTemplate;
+  scope: Scope;
+  index: number;
+  count: number;
+  height: number;
+}
+
 const LAYOUT_EPSILON = 0.001;
 
 const DEBUG_COLORS = {
   flowRegion: "#2563eb",
+  sectionFrame: "#0891b2",
   repeatFrame: "#7c3aed",
   repeatRow: "#16a34a",
   pageBreak: "#dc2626",
@@ -241,7 +262,8 @@ export function renderDocument(input: RenderDocumentInput): RenderDocumentResult
     selectedFontFamily: input.fontFamily,
     pages: [],
     warnings: [],
-    repeatAnalyses: []
+    repeatAnalyses: [],
+    variableStack: []
   };
 
   for (const page of input.template.pages) {
@@ -278,6 +300,10 @@ function renderTemplatePage(state: RenderState, sourcePage: PageTemplate): void 
 
     for (const node of layer.nodes) {
       if (node.type === "flowRegion") {
+        if (isHidden(state, node, emptyScope())) {
+          continue;
+        }
+
         renderFlowRegion(state, sourcePage, pageIndex, node);
       } else {
         state.warnings.push({
@@ -338,8 +364,16 @@ function renderFlowNode(
   scope: Scope,
   origin: Pick<Frame, "x" | "y">
 ): FlowCursor {
+  if (isHidden(state, node, scope)) {
+    return cursor;
+  }
+
   if (node.type === "repeat") {
     return renderRepeatNode(state, context, cursor, node, scope, origin);
+  }
+
+  if (node.type === "section") {
+    return renderSectionNode(state, context, cursor, node, scope, origin);
   }
 
   if (node.type === "stack") {
@@ -351,13 +385,7 @@ function renderFlowNode(
   }
 
   if (node.type === "grid") {
-    state.warnings.push({
-      code: "flow.grid_not_implemented",
-      message: "Grid layout is in the v0 schema but not implemented in the renderer yet.",
-      nodeId: node.id,
-      pageId: context.sourcePage.id
-    });
-    return cursor;
+    return renderGridNode(state, context, cursor, node, scope, origin);
   }
 
   const measuredHeight = measureFlowNodeHeight(state, node, scope);
@@ -382,6 +410,76 @@ function resolveFlowRegionBottom(sourcePage: PageTemplate, region: FlowRegionNod
   return region.frame.y + region.frame.height;
 }
 
+function renderSectionNode(
+  state: RenderState,
+  context: FlowContext,
+  cursor: FlowCursor,
+  node: SectionNode,
+  scope: Scope,
+  origin: Pick<Frame, "x" | "y">
+): FlowCursor {
+  let nextCursor = cursor;
+
+  if (node.behavior?.breakBefore === "page") {
+    nextCursor = forceFlowPageBreak(state, context, nextCursor, node.id, "section break before", true);
+  }
+
+  const sectionHeight = measureSectionHeight(state, node, scope);
+  const requiredHeight = Math.max(0, node.frame.y) + sectionHeight;
+
+  if (node.behavior?.keepTogether) {
+    nextCursor = ensureFlowSpace(state, context, nextCursor, requiredHeight, node.id);
+  }
+
+  const padding = sectionPadding(node);
+  const gap = node.layout?.gap ?? 0;
+  const sectionTop = nextCursor.y + node.frame.y;
+  const sectionX = origin.x + node.frame.x;
+  const startPageIndex = nextCursor.pageIndex;
+  const startPage = state.pages[startPageIndex];
+  // Capture where this section's content begins on the start page so the frame
+  // can be inserted behind it after we know how far the content actually flows.
+  const startContentIndex = startPage.children.length;
+
+  let childCursor: FlowCursor = {
+    pageIndex: startPageIndex,
+    y: sectionTop + padding.top
+  };
+
+  for (const [index, child] of node.children.entries()) {
+    childCursor = renderFlowNode(state, context, childCursor, child, scope, {
+      x: sectionX + padding.left,
+      y: 0
+    });
+
+    if (index < node.children.length - 1) {
+      childCursor = { ...childCursor, y: childCursor.y + gap };
+    }
+  }
+
+  const minimumEndY = childCursor.pageIndex === startPageIndex ? sectionTop + node.frame.height : childCursor.y;
+  nextCursor = {
+    pageIndex: childCursor.pageIndex,
+    y: Math.max(childCursor.y + padding.bottom, minimumEndY)
+  };
+
+  paintFlowSectionFrames(state, context, node, {
+    sectionX,
+    sectionTop,
+    sectionHeight,
+    startPageIndex,
+    startContentIndex,
+    endPageIndex: childCursor.pageIndex,
+    endBottomY: nextCursor.y
+  });
+
+  if (node.behavior?.breakAfter === "page") {
+    return forceFlowPageBreak(state, context, nextCursor, node.id, "section break after", false);
+  }
+
+  return nextCursor;
+}
+
 function renderStackNode(
   state: RenderState,
   context: FlowContext,
@@ -390,14 +488,8 @@ function renderStackNode(
   scope: Scope,
   origin: Pick<Frame, "x" | "y">
 ): FlowCursor {
-  if (node.direction !== "vertical") {
-    state.warnings.push({
-      code: "flow.horizontal_stack_not_implemented",
-      message: "Only vertical stacks are supported in v0.",
-      nodeId: node.id,
-      pageId: context.sourcePage.id
-    });
-    return cursor;
+  if (node.direction === "horizontal") {
+    return renderHorizontalStackNode(state, context, cursor, node, scope, origin);
   }
 
   let nextCursor = {
@@ -405,15 +497,43 @@ function renderStackNode(
     y: cursor.y + node.frame.y
   };
 
-  for (const child of node.children) {
+  for (const [index, child] of node.children.entries()) {
     nextCursor = renderFlowNode(state, context, nextCursor, child, scope, {
       x: origin.x + node.frame.x,
       y: 0
     });
-    nextCursor = { ...nextCursor, y: nextCursor.y + node.gap };
+
+    if (index < node.children.length - 1) {
+      nextCursor = { ...nextCursor, y: nextCursor.y + node.gap };
+    }
   }
 
   return nextCursor;
+}
+
+function renderHorizontalStackNode(
+  state: RenderState,
+  context: FlowContext,
+  cursor: FlowCursor,
+  node: StackNode,
+  scope: Scope,
+  origin: Pick<Frame, "x" | "y">
+): FlowCursor {
+  const stackHeight = measureStackHeight(state, node, scope);
+  const requiredHeight = Math.max(0, node.frame.y) + stackHeight;
+  const stackCursor = ensureFlowSpace(state, context, cursor, requiredHeight, node.id);
+  const page = state.pages[stackCursor.pageIndex];
+  const stackOrigin = {
+    x: origin.x + node.frame.x,
+    y: stackCursor.y + node.frame.y
+  };
+
+  renderStackChildrenAbsolute(state, page, node, scope, stackOrigin);
+
+  return {
+    pageIndex: stackCursor.pageIndex,
+    y: stackOrigin.y + stackHeight
+  };
 }
 
 function renderConditionalNode(
@@ -424,15 +544,26 @@ function renderConditionalNode(
   scope: Scope,
   origin: Pick<Frame, "x" | "y">
 ): FlowCursor {
-  const value = resolvePath(node.condition.source, state.data, scope);
-  const children = value ? node.children : node.fallback;
-  let nextCursor = cursor;
+  const children = selectConditionalChildren(state, node, scope);
+  const measuredHeight = measureConditionalHeight(state, node, scope);
+  const requiredHeight = Math.max(0, node.frame.y) + measuredHeight;
+  cursor = ensureFlowSpace(state, context, cursor, requiredHeight, node.id);
+  let nextCursor: FlowCursor = {
+    pageIndex: cursor.pageIndex,
+    y: cursor.y + node.frame.y
+  };
 
   for (const child of children ?? []) {
-    nextCursor = renderFlowNode(state, context, nextCursor, child, scope, origin);
+    nextCursor = renderFlowNode(state, context, nextCursor, child, scope, {
+      x: origin.x + node.frame.x,
+      y: 0
+    });
   }
 
-  return nextCursor;
+  return {
+    pageIndex: nextCursor.pageIndex,
+    y: Math.max(nextCursor.y, cursor.y + node.frame.y + measuredHeight)
+  };
 }
 
 function renderRepeatNode(
@@ -443,7 +574,7 @@ function renderRepeatNode(
   scope: Scope,
   origin: Pick<Frame, "x" | "y">
 ): FlowCursor {
-  const value = resolveBinding(node.binding, state.data, scope);
+  const value = resolveBinding(node.binding, state, scope);
   const items = Array.isArray(value) ? value : [];
   const repeatX = origin.x + node.frame.x;
   let nextCursor: FlowCursor = {
@@ -504,17 +635,13 @@ function createRepeatRowPlans(state: RenderState, node: RepeatNode, scope: Scope
         ];
   }
 
-  return items.map((item, index) => {
-    const rowScope = extendScope(scope, {
-      [node.itemAlias]: item,
-      loop: {
-        index,
-        number: index + 1,
-        isFirst: index === 0,
-        isLast: index === items.length - 1
-      }
-    });
+  const filteredItems = items.filter((item, index) => {
+    const rowScope = createRepeatRowScope(scope, node, item, index, items.length);
+    return shouldRenderRepeatItem(state, node, rowScope);
+  });
 
+  return filteredItems.map((item, index) => {
+    const rowScope = createRepeatRowScope(scope, node, item, index, filteredItems.length);
     const fixedHeight = measureRepeatRowHeight(state, node, rowScope);
     const minimumHeight = measureRepeatRowMinimumHeight(state, node, rowScope);
 
@@ -522,12 +649,32 @@ function createRepeatRowPlans(state: RenderState, node: RepeatNode, scope: Scope
       children: node.children,
       scope: rowScope,
       index,
-      count: items.length,
+      count: filteredItems.length,
       fixedHeight,
       minimumHeight,
       height: fixedHeight
     };
   });
+}
+
+function createRepeatRowScope(scope: Scope, node: RepeatNode, item: unknown, index: number, count: number): Scope {
+  return extendScope(scope, {
+    [node.itemAlias]: item,
+    loop: {
+      index,
+      number: index + 1,
+      isFirst: index === 0,
+      isLast: index === count - 1
+    }
+  });
+}
+
+function shouldRenderRepeatItem(state: RenderState, node: RepeatNode, scope: Scope): boolean {
+  if (state.mode === "template" || !node.logic?.repeatItemIf) {
+    return true;
+  }
+
+  return evaluateExpression(node.logic.repeatItemIf, state, scope);
 }
 
 function optimizeRepeatRows(
@@ -855,6 +1002,488 @@ function renderRepeatRow(
   };
 }
 
+function renderGridNode(
+  state: RenderState,
+  context: FlowContext,
+  cursor: FlowCursor,
+  node: GridNode,
+  scope: Scope,
+  origin: Pick<Frame, "x" | "y">
+): FlowCursor {
+  const bodyRows = createGridBodyRowPlans(state, node, scope, true, context.sourcePage.id);
+  const headerRow = node.header ? createGridStaticRowPlan(state, node, node.header, scope, "header") : undefined;
+  const footerRow = node.footer ? createGridStaticRowPlan(state, node, node.footer, scope, "footer") : undefined;
+  let nextCursor: FlowCursor = {
+    pageIndex: cursor.pageIndex,
+    y: cursor.y + node.frame.y
+  };
+
+  if (headerRow) {
+    nextCursor = renderGridRowAtCursor(state, context, nextCursor, node, headerRow, origin);
+  }
+
+  for (const row of bodyRows) {
+    const candidate = ensureGridRowSpace(state, context, nextCursor, node, row, origin);
+
+    if (candidate.pageIndex !== nextCursor.pageIndex && headerRow && node.behavior?.repeatHeaderOnPageBreak) {
+      nextCursor = renderGridRowAtCursor(state, context, candidate, node, headerRow, origin);
+      nextCursor = renderGridRowAtCursor(state, context, nextCursor, node, row, origin);
+      continue;
+    }
+
+    nextCursor = renderGridRowOnPage(state, candidate, node, row, origin);
+  }
+
+  if (footerRow) {
+    nextCursor = renderGridRowAtCursor(state, context, nextCursor, node, footerRow, origin);
+  }
+
+  return nextCursor;
+}
+
+function createGridStaticRowPlan(
+  state: RenderState,
+  node: GridNode,
+  template: GridRowTemplate,
+  scope: Scope,
+  kind: "header" | "footer"
+): GridRowPlan {
+  return {
+    kind,
+    template,
+    scope,
+    index: 0,
+    count: 1,
+    height: measureGridRowHeight(state, node, template, scope)
+  };
+}
+
+function createGridBodyRowPlans(
+  state: RenderState,
+  node: GridNode,
+  scope: Scope,
+  emitWarning: boolean,
+  pageId?: string
+): GridRowPlan[] {
+  const items = resolveGridItems(state, node, scope, emitWarning, pageId);
+
+  return items.map((item, index) => {
+    const rowScope = node.binding
+      ? extendScope(scope, {
+          item,
+          row: item,
+          loop: {
+            index,
+            number: index + 1,
+            isFirst: index === 0,
+            isLast: index === items.length - 1
+          }
+        })
+      : scope;
+
+    return {
+      kind: "body",
+      template: node.row,
+      scope: rowScope,
+      index,
+      count: items.length,
+      height: measureGridRowHeight(state, node, node.row, rowScope)
+    };
+  });
+}
+
+function resolveGridItems(
+  state: RenderState,
+  node: GridNode,
+  scope: Scope,
+  emitWarning: boolean,
+  pageId?: string
+): unknown[] {
+  if (!node.binding) {
+    return [undefined];
+  }
+
+  const value = resolveBinding(node.binding, state, scope);
+
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (emitWarning && state.mode !== "template") {
+    state.warnings.push({
+      code: "binding.grid_not_array",
+      message: `Grid binding "${node.binding.path}" did not resolve to an array.`,
+      nodeId: node.id,
+      pageId
+    });
+  }
+
+  return state.mode === "template" ? [{}] : [];
+}
+
+function ensureGridRowSpace(
+  state: RenderState,
+  context: FlowContext,
+  cursor: FlowCursor,
+  node: GridNode,
+  row: GridRowPlan,
+  origin: Pick<Frame, "x" | "y">
+): FlowCursor {
+  const candidate = ensureFlowSpace(state, context, cursor, row.height, node.id);
+
+  if (candidate.pageIndex !== cursor.pageIndex) {
+    addDebugBox(state.pages[cursor.pageIndex], {
+      sourceNodeId: node.id,
+      kind: "page-break",
+      frame: {
+        x: origin.x + node.frame.x,
+        y: cursor.y,
+        width: node.frame.width,
+        height: 1
+      },
+      label: `page break before ${gridRowLabel(row)}`,
+      color: DEBUG_COLORS.pageBreak
+    });
+  }
+
+  return candidate;
+}
+
+function renderGridRowAtCursor(
+  state: RenderState,
+  context: FlowContext,
+  cursor: FlowCursor,
+  node: GridNode,
+  row: GridRowPlan,
+  origin: Pick<Frame, "x" | "y">
+): FlowCursor {
+  const candidate = ensureGridRowSpace(state, context, cursor, node, row, origin);
+  return renderGridRowOnPage(state, candidate, node, row, origin);
+}
+
+function renderGridRowOnPage(
+  state: RenderState,
+  cursor: FlowCursor,
+  node: GridNode,
+  row: GridRowPlan,
+  origin: Pick<Frame, "x" | "y">
+): FlowCursor {
+  const page = state.pages[cursor.pageIndex];
+  const rowOrigin = {
+    x: origin.x + node.frame.x,
+    y: cursor.y
+  };
+
+  renderGridRow(state, page, node, row, rowOrigin);
+
+  return {
+    pageIndex: cursor.pageIndex,
+    y: cursor.y + row.height
+  };
+}
+
+function renderGridRow(
+  state: RenderState,
+  page: RenderPage,
+  node: GridNode,
+  row: GridRowPlan,
+  origin: Pick<Frame, "x" | "y">
+): void {
+  let columnX = 0;
+
+  for (const column of node.columns) {
+    const cell = findGridCell(row.template, column.id);
+    const cellOrigin = {
+      x: origin.x + columnX,
+      y: origin.y
+    };
+
+    if (cell?.style) {
+      page.children.push({
+        id: renderId(page, `${node.id}-${row.kind}-${row.index}-${column.id}-cell`),
+        sourceNodeId: node.id,
+        type: "shape",
+        frame: {
+          x: cellOrigin.x,
+          y: cellOrigin.y,
+          width: column.width,
+          height: row.height
+        },
+        shape: "rectangle",
+        fill: cell.style.fill,
+        stroke: cell.style.stroke,
+        strokeWidth: cell.style.strokeWidth,
+        radius: cell.style.radius
+      });
+    }
+
+    if (cell) {
+      renderGridCellContent(state, page, node, cell, row.scope, cellOrigin);
+    }
+
+    columnX += column.width;
+  }
+}
+
+function renderGridCellContent(
+  state: RenderState,
+  page: RenderPage,
+  grid: GridNode,
+  cell: GridCellTemplate,
+  scope: Scope,
+  origin: Pick<Frame, "x" | "y">
+): void {
+  for (const child of cell.content) {
+    renderGridCellNode(state, page, grid, child, scope, origin);
+  }
+}
+
+function renderGridCellNode(
+  state: RenderState,
+  page: RenderPage,
+  grid: GridNode,
+  node: FlowNode,
+  scope: Scope,
+  origin: Pick<Frame, "x" | "y">
+): void {
+  if (isHidden(state, node, scope)) {
+    return;
+  }
+
+  if (node.type === "conditional") {
+    const children = selectConditionalChildren(state, node, scope);
+
+    for (const child of children) {
+      renderGridCellNode(state, page, grid, child, scope, {
+        x: origin.x + node.frame.x,
+        y: origin.y + node.frame.y
+      });
+    }
+
+    return;
+  }
+
+  if (node.type === "stack") {
+    renderGridCellStack(state, page, grid, node, scope, origin);
+    return;
+  }
+
+  if (node.type === "repeat" || node.type === "grid") {
+    state.warnings.push({
+      code: "grid.nested_flow_not_implemented",
+      message: `Nested ${node.type} nodes inside grid cells are not supported yet.`,
+      nodeId: node.id,
+      pageId: page.id
+    });
+    return;
+  }
+
+  renderAbsoluteNode(state, page, node, scope, origin);
+}
+
+function renderGridCellStack(
+  state: RenderState,
+  page: RenderPage,
+  grid: GridNode,
+  node: StackNode,
+  scope: Scope,
+  origin: Pick<Frame, "x" | "y">
+): void {
+  let offset = 0;
+  const children = node.children.filter((child) => !isHidden(state, child, scope));
+
+  for (const [index, child] of children.entries()) {
+    const childOrigin =
+      node.direction === "vertical"
+        ? { x: origin.x + node.frame.x, y: origin.y + node.frame.y + offset }
+        : { x: origin.x + node.frame.x + offset, y: origin.y + node.frame.y };
+
+    renderGridCellNode(state, page, grid, child, scope, childOrigin);
+    offset += measureFlowNodeHeight(state, child, scope) + (index < children.length - 1 ? node.gap : 0);
+  }
+}
+
+function findGridCell(row: GridRowTemplate, columnId: string): GridCellTemplate | undefined {
+  return row.cells.find((cell) => cell.columnId === columnId);
+}
+
+function gridRowLabel(row: GridRowPlan): string {
+  if (row.kind === "body") {
+    return `grid row ${row.index + 1}`;
+  }
+
+  return `grid ${row.kind}`;
+}
+
+function sectionPadding(node: SectionNode): Box {
+  return node.layout?.padding ?? { top: 0, right: 0, bottom: 0, left: 0 };
+}
+
+interface FlowSectionFrameSpans {
+  sectionX: number;
+  sectionTop: number;
+  sectionHeight: number;
+  startPageIndex: number;
+  startContentIndex: number;
+  endPageIndex: number;
+  endBottomY: number;
+}
+
+// Draws the section background/border on every page the section spans. A section
+// that stays on one page gets a single frame at its measured height; a section
+// that overflows draws a frame fragment per page (filling to the page's flow
+// bottom on non-final pages) so the frame never desyncs from its content.
+function paintFlowSectionFrames(
+  state: RenderState,
+  context: FlowContext,
+  node: SectionNode,
+  spans: FlowSectionFrameSpans
+): void {
+  const { sectionX, sectionTop, sectionHeight, startPageIndex, startContentIndex, endPageIndex, endBottomY } = spans;
+
+  for (let pageIndex = startPageIndex; pageIndex <= endPageIndex; pageIndex += 1) {
+    const page = state.pages[pageIndex];
+
+    if (!page) {
+      continue;
+    }
+
+    const top = pageIndex === startPageIndex ? sectionTop : context.continuationTop;
+    let bottom: number;
+
+    if (startPageIndex === endPageIndex) {
+      bottom = sectionTop + sectionHeight;
+    } else if (pageIndex === endPageIndex) {
+      bottom = endBottomY;
+    } else {
+      bottom = pageIndex === context.initialPageIndex ? context.firstPageBottom : context.continuationBottom;
+    }
+
+    const height = Math.max(0, bottom - top);
+    const insertIndex = pageIndex === startPageIndex ? startContentIndex : 0;
+    const shape = buildSectionFrameShape(page, node, sectionX, top, height);
+
+    if (shape) {
+      page.children.splice(insertIndex, 0, shape);
+    }
+
+    addSectionFrameDebugBox(page, node, sectionX, top, height);
+  }
+}
+
+function renderSectionFrame(
+  page: RenderPage,
+  node: SectionNode,
+  origin: Pick<Frame, "x" | "y">,
+  height: number
+): void {
+  const shape = buildSectionFrameShape(page, node, origin.x, origin.y, height);
+
+  if (shape) {
+    page.children.push(shape);
+  }
+
+  addSectionFrameDebugBox(page, node, origin.x, origin.y, height);
+}
+
+function buildSectionFrameShape(
+  page: RenderPage,
+  node: SectionNode,
+  x: number,
+  y: number,
+  height: number
+): RenderNode | undefined {
+  if (!node.style) {
+    return undefined;
+  }
+
+  return {
+    id: renderId(page, `${node.id}-section-frame`),
+    sourceNodeId: node.id,
+    type: "shape",
+    frame: {
+      x,
+      y,
+      width: node.frame.width,
+      height
+    },
+    rotation: node.rotation,
+    opacity: node.opacity,
+    shape: "rectangle",
+    fill: node.style.fill,
+    stroke: node.style.stroke,
+    strokeWidth: node.style.strokeWidth,
+    radius: node.style.radius
+  };
+}
+
+function addSectionFrameDebugBox(
+  page: RenderPage,
+  node: SectionNode,
+  x: number,
+  y: number,
+  height: number
+): void {
+  addDebugBox(page, {
+    sourceNodeId: node.id,
+    kind: "section-frame",
+    frame: {
+      x,
+      y,
+      width: node.frame.width,
+      height
+    },
+    label: node.name ? `section ${node.name}` : "section",
+    color: DEBUG_COLORS.sectionFrame
+  });
+}
+
+function renderStackChildrenAbsolute(
+  state: RenderState,
+  page: RenderPage,
+  node: StackNode,
+  scope: Scope,
+  origin: Pick<Frame, "x" | "y">
+): void {
+  let cursor = 0;
+  const children = node.children.filter((child) => !isHidden(state, child, scope));
+
+  for (const [index, child] of children.entries()) {
+    const childOrigin =
+      node.direction === "horizontal"
+        ? { x: origin.x + cursor, y: origin.y }
+        : { x: origin.x, y: origin.y + cursor };
+
+    renderStackChildAbsolute(state, page, child, scope, childOrigin);
+
+    const childSize =
+      node.direction === "horizontal"
+        ? Math.max(0, child.frame.x) + measureFlowNodeWidth(state, child, scope)
+        : Math.max(0, child.frame.y) + measureFlowNodeHeight(state, child, scope);
+    cursor += childSize + (index < children.length - 1 ? node.gap : 0);
+  }
+}
+
+function renderStackChildAbsolute(
+  state: RenderState,
+  page: RenderPage,
+  node: FlowNode,
+  scope: Scope,
+  origin: Pick<Frame, "x" | "y">
+): void {
+  if (node.type === "repeat" || node.type === "grid") {
+    state.warnings.push({
+      code: "stack.nested_flow_not_implemented",
+      message: `Nested ${node.type} nodes inside absolute stack layout are not supported yet.`,
+      nodeId: node.id,
+      pageId: page.id
+    });
+    return;
+  }
+
+  renderAbsoluteNode(state, page, node, scope, origin);
+}
+
 function ensureFlowSpace(
   state: RenderState,
   context: FlowContext,
@@ -879,7 +1508,48 @@ function ensureFlowSpace(
     });
   }
 
+  const nextCursor = addFlowContinuationPage(state, context);
+
+  state.warnings.push({
+    code: "layout.page_break",
+    message: `Moved node ${nodeId} to continuation page ${state.pages[nextCursor.pageIndex].id}.`,
+    nodeId,
+    pageId: state.pages[nextCursor.pageIndex].id
+  });
+
+  return nextCursor;
+}
+
+function forceFlowPageBreak(
+  state: RenderState,
+  context: FlowContext,
+  cursor: FlowCursor,
+  nodeId: string,
+  reason: string,
+  skipIfAlreadyAtPageTop: boolean
+): FlowCursor {
+  const pageTop = cursor.pageIndex === context.initialPageIndex ? context.region.frame.y : context.continuationTop;
+
+  if (skipIfAlreadyAtPageTop && Math.abs(cursor.y - pageTop) <= LAYOUT_EPSILON) {
+    return cursor;
+  }
+
+  const nextCursor = addFlowContinuationPage(state, context);
+
+  state.warnings.push({
+    code: "layout.page_break",
+    message: `Created continuation page ${state.pages[nextCursor.pageIndex].id} for ${reason}.`,
+    nodeId,
+    pageId: state.pages[nextCursor.pageIndex].id
+  });
+
+  return nextCursor;
+}
+
+function addFlowContinuationPage(state: RenderState, context: FlowContext): FlowCursor {
+  const continuationHeight = context.continuationBottom - context.continuationTop;
   const nextPageIndex = addRenderPage(state, context.sourcePage, state.pages.length);
+
   addDebugBox(state.pages[nextPageIndex], {
     sourceNodeId: context.region.id,
     kind: "flow-region",
@@ -891,13 +1561,6 @@ function ensureFlowSpace(
     },
     label: "flow continuation",
     color: DEBUG_COLORS.flowRegion
-  });
-
-  state.warnings.push({
-    code: "layout.page_break",
-    message: `Moved node ${nodeId} to continuation page ${state.pages[nextPageIndex].id}.`,
-    nodeId,
-    pageId: state.pages[nextPageIndex].id
   });
 
   return {
@@ -913,7 +1576,7 @@ function renderAbsoluteNode(
   scope: Scope,
   origin: Pick<Frame, "x" | "y">
 ): void {
-  if (isHidden(node)) {
+  if (isHidden(state, node, scope)) {
     return;
   }
 
@@ -992,6 +1655,44 @@ function renderAbsoluteNode(
     return;
   }
 
+  if (node.type === "conditional") {
+    const children = selectConditionalChildren(state, node, scope);
+
+    for (const child of children) {
+      renderAbsoluteNode(state, page, child, scope, {
+        x: origin.x + node.frame.x,
+        y: origin.y + node.frame.y
+      });
+    }
+
+    return;
+  }
+
+  if (node.type === "section") {
+    const frame = offsetFrame(node.frame, origin, measureSectionHeight(state, node, scope));
+    const padding = sectionPadding(node);
+    renderSectionFrame(page, node, { x: frame.x, y: frame.y }, frame.height);
+
+    for (const child of node.children) {
+      renderAbsoluteNode(state, page, child, scope, {
+        x: frame.x + padding.left,
+        y: frame.y + padding.top
+      });
+    }
+
+    return;
+  }
+
+  if (node.type === "stack") {
+    const stackOrigin = {
+      x: origin.x + node.frame.x,
+      y: origin.y + node.frame.y
+    };
+
+    renderStackChildrenAbsolute(state, page, node, scope, stackOrigin);
+    return;
+  }
+
   if (node.type === "group") {
     for (const child of node.children) {
       renderAbsoluteNode(state, page, child, scope, {
@@ -999,6 +1700,17 @@ function renderAbsoluteNode(
         y: origin.y + node.frame.y
       });
     }
+
+    return;
+  }
+
+  if (node.type === "repeat" || node.type === "grid") {
+    state.warnings.push({
+      code: "absolute.flow_not_implemented",
+      message: `${node.type} nodes can only render inside flow layout in this version.`,
+      nodeId: node.id,
+      pageId: page.id
+    });
   }
 }
 
@@ -1025,6 +1737,10 @@ function renderGeneratedNode(
 }
 
 function measureFlowNodeHeight(state: RenderState, node: FlowNode, scope: Scope): number {
+  if (isHidden(state, node, scope)) {
+    return 0;
+  }
+
   if (node.type === "text") {
     const style = resolveTextStyle(state, node.style);
     const text = resolveInlineContent(node.content, state, scope, node.id);
@@ -1038,8 +1754,16 @@ function measureFlowNodeHeight(state: RenderState, node: FlowNode, scope: Scope)
     );
   }
 
-  if (node.type === "image" || node.type === "shape" || node.type === "barcode" || node.type === "qr" || node.type === "grid") {
+  if (node.type === "image" || node.type === "shape" || node.type === "barcode" || node.type === "qr") {
     return node.frame.height;
+  }
+
+  if (node.type === "grid") {
+    return measureGridHeight(state, node, scope);
+  }
+
+  if (node.type === "section") {
+    return measureSectionHeight(state, node, scope);
   }
 
   if (node.type === "group") {
@@ -1047,16 +1771,11 @@ function measureFlowNodeHeight(state: RenderState, node: FlowNode, scope: Scope)
   }
 
   if (node.type === "stack") {
-    return node.children.reduce((height, child, index) => {
-      const gap = index === 0 ? 0 : node.gap;
-      return height + gap + measureFlowNodeHeight(state, child, scope);
-    }, node.frame.height);
+    return measureStackHeight(state, node, scope);
   }
 
   if (node.type === "conditional") {
-    const value = resolvePath(node.condition.source, state.data, scope);
-    const children = value ? node.children : (node.fallback ?? []);
-    return children.reduce((height, child) => height + measureFlowNodeHeight(state, child, scope), node.frame.height);
+    return measureConditionalHeight(state, node, scope);
   }
 
   if (node.type === "repeat") {
@@ -1066,8 +1785,121 @@ function measureFlowNodeHeight(state: RenderState, node: FlowNode, scope: Scope)
   return assertNever(node);
 }
 
+function measureStackHeight(state: RenderState, node: StackNode, scope: Scope): number {
+  const children = node.children.filter((child) => !isHidden(state, child, scope));
+
+  if (node.direction === "horizontal") {
+    const childrenBottom = children.reduce((bottom, child) => {
+      return Math.max(bottom, child.frame.y + measureFlowNodeHeight(state, child, scope));
+    }, 0);
+
+    return Math.max(node.frame.height, childrenBottom);
+  }
+
+  const childrenHeight = children.reduce((height, child, index) => {
+    return height + (index === 0 ? 0 : node.gap) + Math.max(0, child.frame.y) + measureFlowNodeHeight(state, child, scope);
+  }, 0);
+
+  return Math.max(node.frame.height, childrenHeight);
+}
+
+function measureFlowNodeWidth(state: RenderState, node: FlowNode, scope: Scope): number {
+  if (isHidden(state, node, scope)) {
+    return 0;
+  }
+
+  if (node.type === "stack") {
+    return measureStackWidth(state, node, scope);
+  }
+
+  if (node.type === "section") {
+    return node.frame.width;
+  }
+
+  return node.frame.width;
+}
+
+function measureStackWidth(state: RenderState, node: StackNode, scope: Scope): number {
+  const children = node.children.filter((child) => !isHidden(state, child, scope));
+
+  if (node.direction === "vertical") {
+    const childrenRight = children.reduce((right, child) => {
+      return Math.max(right, child.frame.x + measureFlowNodeWidth(state, child, scope));
+    }, 0);
+
+    return Math.max(node.frame.width, childrenRight);
+  }
+
+  const childrenWidth = children.reduce((width, child, index) => {
+    return width + (index === 0 ? 0 : node.gap) + Math.max(0, child.frame.x) + measureFlowNodeWidth(state, child, scope);
+  }, 0);
+
+  return Math.max(node.frame.width, childrenWidth);
+}
+
+function selectConditionalChildren(state: RenderState, node: ConditionalNode, scope: Scope): FlowNode[] {
+  return evaluateExpression(node.condition, state, scope) ? node.children : (node.fallback ?? []);
+}
+
+function measureConditionalHeight(state: RenderState, node: ConditionalNode, scope: Scope): number {
+  const children = selectConditionalChildren(state, node, scope).filter((child) => !isHidden(state, child, scope));
+  const childrenBottom = children.reduce((bottom, child) => {
+    return Math.max(bottom, Math.max(0, child.frame.y) + measureFlowNodeHeight(state, child, scope));
+  }, 0);
+
+  return Math.max(node.frame.height, childrenBottom);
+}
+
+function measureSectionHeight(state: RenderState, node: SectionNode, scope: Scope): number {
+  const padding = sectionPadding(node);
+  const gap = node.layout?.gap ?? 0;
+  const children = node.children.filter((child) => !isHidden(state, child, scope));
+  const contentHeight = children.reduce((height, child, index) => {
+    const childOffset = Math.max(0, child.frame.y);
+    const childHeight = measureFlowNodeHeight(state, child, scope);
+    return height + (index === 0 ? 0 : gap) + childOffset + childHeight;
+  }, 0);
+
+  return Math.max(node.frame.height, padding.top + contentHeight + padding.bottom);
+}
+
+function measureGridHeight(state: RenderState, node: GridNode, scope: Scope): number {
+  const headerHeight = node.header ? measureGridRowHeight(state, node, node.header, scope) : 0;
+  const bodyRows = createGridBodyRowPlans(state, node, scope, false);
+  const bodyHeight = bodyRows.reduce((height, row) => height + row.height, 0);
+  const footerHeight = node.footer ? measureGridRowHeight(state, node, node.footer, scope) : 0;
+
+  return Math.max(node.frame.height, headerHeight + bodyHeight + footerHeight);
+}
+
+function measureGridRowHeight(
+  state: RenderState,
+  node: GridNode,
+  template: GridRowTemplate,
+  scope: Scope
+): number {
+  const contentBottom = template.cells.reduce((rowBottom, cell) => {
+    const cellBottom = cell.content.reduce((bottom, child) => {
+      if (isHidden(state, child, scope)) {
+        return bottom;
+      }
+
+      const childHeight = measureFlowNodeHeight(state, child, scope);
+      return Math.max(bottom, child.frame.y + childHeight);
+    }, 0);
+
+    return Math.max(rowBottom, cellBottom);
+  }, 0);
+
+  return Math.max(node.rowHeight, contentBottom);
+}
+
 function measureRepeatRowHeight(state: RenderState, node: RepeatNode, scope: Scope): number {
   const childrenBottom = node.children.reduce((bottom, child) => {
+    if (isHidden(state, child, scope)) {
+      return bottom;
+    }
+
     const childHeight = measureFlowNodeHeight(state, child, scope);
     return Math.max(bottom, child.frame.y + childHeight);
   }, 0);
@@ -1077,6 +1909,10 @@ function measureRepeatRowHeight(state: RenderState, node: RepeatNode, scope: Sco
 
 function measureRepeatRowMinimumHeight(state: RenderState, node: RepeatNode, scope: Scope): number {
   const childrenBottom = node.children.reduce((bottom, child) => {
+    if (isHidden(state, child, scope)) {
+      return bottom;
+    }
+
     if (isRepeatBackgroundShape(child, node, node.frame.height)) {
       return bottom;
     }
@@ -1114,6 +1950,10 @@ function isRepeatBackgroundShape(child: FlowNode, repeat: RepeatNode, rowHeight:
 
 function measureGroupHeight(state: RenderState, node: GroupNode, scope: Scope): number {
   const childrenBottom = node.children.reduce((bottom, child) => {
+    if (isHidden(state, child, scope)) {
+      return bottom;
+    }
+
     if (!isFlowNode(child)) {
       return Math.max(bottom, child.frame.y + child.frame.height);
     }
@@ -1146,7 +1986,7 @@ function resolveField(field: FieldRun, state: RenderState, scope: Scope, nodeId:
     return bindingPlaceholder(field.binding);
   }
 
-  const value = resolveBinding(field.binding, state.data, scope);
+  const value = resolveBinding(field.binding, state, scope);
 
   if (value == null) {
     state.warnings.push({
@@ -1175,8 +2015,12 @@ function resolveDynamicValue(
       return bindingPlaceholder(value.binding);
     }
 
-    const resolved = resolveBinding(value.binding, state.data, scope);
+    const resolved = resolveBinding(value.binding, state, scope);
     return resolved == null ? "" : String(resolved);
+  }
+
+  if (value.kind === "formula") {
+    return state.mode === "template" ? "{{formula}}" : String(resolveFormulaExpression(value.formula, state, scope, nodeId) ?? "");
   }
 
   return resolveInlineContent(value.parts, state, scope, nodeId);
@@ -1195,7 +2039,7 @@ function resolveImageSource(state: RenderState, source: ImageSource, scope: Scop
     return { src: "", placeholder: bindingPlaceholder(source.binding) };
   }
 
-  const value = resolveBinding(source.binding, state.data, scope);
+  const value = resolveBinding(source.binding, state, scope);
   return { src: value == null ? "" : String(value) };
 }
 
@@ -1212,6 +2056,10 @@ function dynamicValueHasBinding(value: DynamicValue): boolean {
     return inlineContentHasBinding(value.parts);
   }
 
+  if (value.kind === "formula") {
+    return true;
+  }
+
   return false;
 }
 
@@ -1219,11 +2067,99 @@ function inlineContentHasBinding(content: InlineContent[]): boolean {
   return content.some((part) => part.kind === "field");
 }
 
-function resolveBinding(binding: BindingRef, data: Record<string, unknown>, scope: Scope): unknown {
-  return resolvePath(binding.path, data, scope);
+function resolveBinding(binding: BindingRef, state: RenderState, scope: Scope): unknown {
+  return resolvePath(binding.path, state, scope);
 }
 
-function resolvePath(path: string, data: Record<string, unknown>, scope: Scope): unknown {
+function evaluateExpression(expression: ExpressionRef, state: RenderState, scope: Scope): boolean {
+  const value = resolvePath(expression.source, state, scope);
+  const comparison = expression.compareSource ? resolvePath(expression.compareSource, state, scope) : expression.value;
+
+  switch (expression.operator ?? "truthy") {
+    case "truthy":
+      return Boolean(value);
+    case "falsy":
+      return !value;
+    case "exists":
+      return value != null && value !== "";
+    case "notExists":
+      return value == null || value === "";
+    case "equals":
+      return valuesEqual(value, comparison);
+    case "notEquals":
+      return !valuesEqual(value, comparison);
+    case "greaterThan":
+      return compareNumbers(value, comparison, (left, right) => left > right);
+    case "greaterThanOrEqual":
+      return compareNumbers(value, comparison, (left, right) => left >= right);
+    case "lessThan":
+      return compareNumbers(value, comparison, (left, right) => left < right);
+    case "lessThanOrEqual":
+      return compareNumbers(value, comparison, (left, right) => left <= right);
+    case "contains":
+      return valueContains(value, comparison);
+    case "notContains":
+      return !valueContains(value, comparison);
+    default:
+      return false;
+  }
+}
+
+function valuesEqual(left: unknown, right: unknown): boolean {
+  if (left instanceof Date || right instanceof Date) {
+    return new Date(String(left)).getTime() === new Date(String(right)).getTime();
+  }
+
+  if (Object.is(left, right)) {
+    return true;
+  }
+
+  // Coerce across types the same way the numeric comparison operators do, so a
+  // numeric-looking string ("30") equals its number (30). Guarded to genuinely
+  // numeric-looking values so "" / null / booleans do not collapse to 0.
+  if (isNumericLike(left) && isNumericLike(right)) {
+    return Number(left) === Number(right);
+  }
+
+  return false;
+}
+
+function isNumericLike(value: unknown): boolean {
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+
+  if (typeof value === "string") {
+    return value.trim() !== "" && Number.isFinite(Number(value));
+  }
+
+  return false;
+}
+
+function compareNumbers(
+  left: unknown,
+  right: unknown,
+  predicate: (left: number, right: number) => boolean
+): boolean {
+  const leftNumber = Number(left);
+  const rightNumber = Number(right);
+
+  return Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && predicate(leftNumber, rightNumber);
+}
+
+function valueContains(value: unknown, needle: unknown): boolean {
+  if (typeof value === "string") {
+    return value.includes(String(needle ?? ""));
+  }
+
+  if (Array.isArray(value)) {
+    return value.some((item) => valuesEqual(item, needle));
+  }
+
+  return false;
+}
+
+function resolvePath(path: string, state: RenderState, scope: Scope): unknown {
   const [root, ...rest] = normalizePath(path);
 
   if (!root) {
@@ -1234,7 +2170,245 @@ function resolvePath(path: string, data: Record<string, unknown>, scope: Scope):
     return getPath(scope.values[root], rest);
   }
 
-  return getPath(data[root], rest);
+  if (root === "variables") {
+    const [variableKey, ...variableRest] = rest;
+    return variableKey ? getPath(resolveVariableValue(variableKey, state, scope), variableRest) : undefined;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(state.data, root)) {
+    return getPath(state.data[root], rest);
+  }
+
+  const variableValue = resolveVariableValue(root, state, scope);
+  return variableValue === undefined ? undefined : getPath(variableValue, rest);
+}
+
+function resolveVariableValue(key: string, state: RenderState, scope: Scope): unknown {
+  const variable = findVariableDefinition(key, state.template.variables ?? []);
+
+  if (!variable) {
+    return undefined;
+  }
+
+  if (state.variableStack.includes(variable.id)) {
+    state.warnings.push({
+      code: "variable.cycle",
+      message: `Variable "${variable.id}" references itself through another variable.`,
+      nodeId: variable.id
+    });
+    return undefined;
+  }
+
+  state.variableStack.push(variable.id);
+
+  try {
+    return resolveVariableDynamicValue(variable.value, state, scope, variable);
+  } finally {
+    state.variableStack.pop();
+  }
+}
+
+function resolveVariableDynamicValue(
+  value: DynamicValue,
+  state: RenderState,
+  scope: Scope,
+  variable: VariableDefinition
+): unknown {
+  if (value.kind === "literal") {
+    return value.value;
+  }
+
+  if (value.kind === "binding") {
+    if (state.mode === "template") {
+      return bindingPlaceholder(value.binding);
+    }
+
+    return resolveBinding(value.binding, state, scope);
+  }
+
+  if (value.kind === "formula") {
+    if (state.mode === "template") {
+      return `{{${variable.id}}}`;
+    }
+
+    return resolveFormulaExpression(value.formula, state, scope, variable.id);
+  }
+
+  return resolveInlineContent(value.parts, state, scope, `variable:${variable.id}`);
+}
+
+function findVariableDefinition(key: string, variables: VariableDefinition[]): VariableDefinition | undefined {
+  return variables.find((variable) => variable.id === key) ?? variables.find((variable) => variable.name === key);
+}
+
+function resolveFormulaExpression(
+  formula: FormulaExpression,
+  state: RenderState,
+  scope: Scope,
+  variableId: string
+): unknown {
+  switch (formula.op) {
+    case "sum": {
+      const values = resolveFormulaPathValues(formula.path, state, scope);
+      return values.reduce<number>((sum, value) => {
+        const number = Number(value);
+
+        if (!Number.isFinite(number)) {
+          state.warnings.push({
+            code: "formula.invalid_number",
+            message: `Formula variable "${variableId}" could not sum non-numeric value from "${formula.path}".`,
+            nodeId: variableId
+          });
+          return sum;
+        }
+
+        return sum + number;
+      }, 0);
+    }
+
+    case "count": {
+      const value = resolvePath(formula.path, state, scope);
+
+      if (Array.isArray(value)) {
+        return value.length;
+      }
+
+      return resolveFormulaPathValues(formula.path, state, scope).filter((entry) => entry != null).length;
+    }
+
+    case "concat":
+      return formula.parts.map((part) => String(resolveFormulaOperand(part, state, scope, variableId) ?? "")).join("");
+
+    case "add":
+    case "subtract":
+    case "multiply":
+    case "divide": {
+      const left = resolveFormulaNumber(formula.left, state, scope, variableId);
+      const right = resolveFormulaNumber(formula.right, state, scope, variableId);
+
+      if (left == null || right == null) {
+        return "";
+      }
+
+      if (formula.op === "add") return left + right;
+      if (formula.op === "subtract") return left - right;
+      if (formula.op === "multiply") return left * right;
+
+      if (right === 0) {
+        state.warnings.push({
+          code: "formula.divide_by_zero",
+          message: `Formula variable "${variableId}" attempted to divide by zero.`,
+          nodeId: variableId
+        });
+        return "";
+      }
+
+      return left / right;
+    }
+  }
+}
+
+function resolveFormulaOperand(
+  operand: FormulaOperand,
+  state: RenderState,
+  scope: Scope,
+  variableId: string
+): unknown {
+  if (operand.kind === "literal") {
+    return operand.value;
+  }
+
+  if (operand.kind === "variable") {
+    return resolveVariableValue(operand.id, state, scope);
+  }
+
+  const value = resolvePath(operand.path, state, scope);
+
+  if (value === undefined) {
+    state.warnings.push({
+      code: "formula.missing_path",
+      message: `Formula variable "${variableId}" could not resolve path "${operand.path}".`,
+      nodeId: variableId
+    });
+  }
+
+  return value;
+}
+
+function resolveFormulaNumber(
+  operand: FormulaOperand,
+  state: RenderState,
+  scope: Scope,
+  variableId: string
+): number | undefined {
+  const value = resolveFormulaOperand(operand, state, scope, variableId);
+
+  // Treat empty/missing operands as failures rather than silently coercing to 0
+  // (Number("") === 0), which would otherwise mask upstream formula errors.
+  const number = value === "" || value == null ? Number.NaN : Number(value);
+
+  if (!Number.isFinite(number)) {
+    state.warnings.push({
+      code: "formula.invalid_number",
+      message: `Formula variable "${variableId}" expected a numeric operand.`,
+      nodeId: variableId
+    });
+    return undefined;
+  }
+
+  return number;
+}
+
+function resolveFormulaPathValues(path: string, state: RenderState, scope: Scope): unknown[] {
+  const [root, ...rest] = normalizePath(path);
+
+  if (!root) {
+    return [];
+  }
+
+  let value: unknown;
+
+  if (Object.prototype.hasOwnProperty.call(scope.values, root)) {
+    value = scope.values[root];
+  } else if (root === "variables") {
+    const [variableKey, ...variableRest] = rest;
+    const variableValue = variableKey ? resolveVariableValue(variableKey, state, scope) : undefined;
+    return variableRest.length > 0 ? collectPathValues(variableValue, variableRest) : [variableValue];
+  } else if (Object.prototype.hasOwnProperty.call(state.data, root)) {
+    value = state.data[root];
+  } else {
+    value = resolveVariableValue(root, state, scope);
+  }
+
+  return collectPathValues(value, rest);
+}
+
+function collectPathValues(value: unknown, parts: string[]): unknown[] {
+  if (parts.length === 0) {
+    return Array.isArray(value) ? value : [value];
+  }
+
+  if (value == null) {
+    return [];
+  }
+
+  const [part, ...rest] = parts;
+
+  if (Array.isArray(value)) {
+    const numericIndex = Number(part);
+
+    if (Number.isInteger(numericIndex)) {
+      return collectPathValues(value[numericIndex], rest);
+    }
+
+    return value.flatMap((item) => collectPathValues(item, parts));
+  }
+
+  if (typeof value !== "object") {
+    return [];
+  }
+
+  return collectPathValues((value as Record<string, unknown>)[part], rest);
 }
 
 function normalizePath(path: string): string[] {
@@ -1378,8 +2552,16 @@ function extendScope(scope: Scope, values: Record<string, unknown>): Scope {
   };
 }
 
-function isHidden(node: DocNode | FlowNode): boolean {
-  return node.visible === false;
+function isHidden(state: RenderState, node: DocNode | FlowNode, scope: Scope): boolean {
+  if (node.visible === false) {
+    return true;
+  }
+
+  if (state.mode === "template") {
+    return false;
+  }
+
+  return Boolean(node.logic?.visibleIf && !evaluateExpression(node.logic.visibleIf, state, scope));
 }
 
 function isFlowNode(node: DocNode): node is FlowNode {
@@ -1389,6 +2571,7 @@ function isFlowNode(node: DocNode): node is FlowNode {
     node.type === "shape" ||
     node.type === "barcode" ||
     node.type === "qr" ||
+    node.type === "section" ||
     node.type === "stack" ||
     node.type === "repeat" ||
     node.type === "conditional" ||

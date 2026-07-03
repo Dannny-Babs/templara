@@ -52,6 +52,7 @@ export interface DocumentTemplate {
 export interface PageTemplate {
   id: string;
   name?: string;
+  key?: string;
   size: Size;
   margin?: Box;
   layers: PageLayer[];
@@ -78,6 +79,7 @@ export type DocNode =
   | QrNode
   | GroupNode
   | FlowRegionNode
+  | SectionNode
   | StackNode
   | RepeatNode
   | ConditionalNode
@@ -91,8 +93,14 @@ export interface BaseNode {
   opacity?: number;
   locked?: boolean;
   visible?: boolean;
+  logic?: NodeLogic;
   name?: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface NodeLogic {
+  visibleIf?: ExpressionRef;
+  repeatItemIf?: ExpressionRef;
 }
 
 export interface TextNode extends BaseNode {
@@ -186,11 +194,32 @@ export type FlowNode =
   | ShapeNode
   | BarcodeNode
   | QrNode
+  | SectionNode
   | StackNode
   | RepeatNode
   | ConditionalNode
   | GridNode
   | GroupNode;
+
+export interface SectionNode extends BaseNode {
+  type: "section";
+  children: FlowNode[];
+  layout?: SectionLayout;
+  behavior?: SectionBehavior;
+  style?: ShapeStyle;
+}
+
+export interface SectionLayout {
+  direction?: "vertical";
+  gap?: number;
+  padding?: Box;
+}
+
+export interface SectionBehavior {
+  keepTogether?: boolean;
+  breakBefore?: "auto" | "page";
+  breakAfter?: "auto" | "page";
+}
 
 export interface StackNode extends BaseNode {
   type: "stack";
@@ -262,14 +291,42 @@ export interface BindingRef {
   path: string;
 }
 
+export type ExpressionOperator =
+  | "truthy"
+  | "falsy"
+  | "exists"
+  | "notExists"
+  | "equals"
+  | "notEquals"
+  | "greaterThan"
+  | "greaterThanOrEqual"
+  | "lessThan"
+  | "lessThanOrEqual"
+  | "contains"
+  | "notContains";
+
 export interface ExpressionRef {
   source: string;
+  operator?: ExpressionOperator;
+  value?: unknown;
+  compareSource?: string;
 }
 
 export type DynamicValue =
   | { kind: "literal"; value: string }
   | { kind: "binding"; binding: BindingRef }
-  | { kind: "template"; parts: InlineContent[] };
+  | { kind: "template"; parts: InlineContent[] }
+  | { kind: "formula"; formula: FormulaExpression };
+
+export type FormulaExpression =
+  | { op: "sum" | "count"; path: string }
+  | { op: "add" | "subtract" | "multiply" | "divide"; left: FormulaOperand; right: FormulaOperand }
+  | { op: "concat"; parts: FormulaOperand[] };
+
+export type FormulaOperand =
+  | { kind: "literal"; value: string | number | boolean }
+  | { kind: "path"; path: string }
+  | { kind: "variable"; id: string };
 
 export interface VariableDefinition {
   id: string;
