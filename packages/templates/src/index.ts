@@ -119,7 +119,7 @@ function textNode(
     type: "text",
     frame: { x, y, width, height },
     content,
-    style
+    style: { ...style }
   };
 }
 
@@ -156,6 +156,9 @@ export const shipmentBolTemplate: DocumentTemplate = {
   id: "shipment-bol",
   version: "0.0.1",
   unit: "px",
+  metadata: {
+    name: "Shipment BOL Template"
+  },
   fonts,
   pages: [
     {
@@ -434,4 +437,268 @@ export const shipmentBolSampleData = {
   }
 } satisfies Record<string, unknown>;
 
-export const invoiceTemplate = shipmentBolTemplate;
+export const invoiceTemplate: DocumentTemplate = {
+  id: "invoice",
+  version: "0.0.1",
+  unit: "px",
+  metadata: {
+    name: "Invoice Template"
+  },
+  fonts,
+  variables: [
+    {
+      id: "invoiceItemCount",
+      name: "Invoice Item Count",
+      category: "computed",
+      value: { kind: "formula", formula: { op: "count", path: "invoice.items" } }
+    },
+    {
+      id: "invoiceComputedSubtotal",
+      name: "Computed Subtotal",
+      category: "computed",
+      value: { kind: "formula", formula: { op: "sum", path: "invoice.items.total" } }
+    }
+  ],
+  pages: [
+    {
+      id: "page-1",
+      name: "Invoice",
+      size: PAGE_PRESETS.letter,
+      margin: { top: 48, right: 48, bottom: 48, left: 48 },
+      layers: [
+        {
+          id: "background",
+          kind: "background",
+          nodes: [
+            rect("invoice-page-border", 36, 36, 744, 984, "#ffffff", "#cbd5e1"),
+            rect("invoice-header-band", 36, 36, 744, 126, "#f8fafc", "#cbd5e1"),
+            rect("invoice-accent-rule", 36, 160, 744, 4, "#4f46e5", "#4f46e5")
+          ]
+        },
+        {
+          id: "fixed",
+          kind: "fixed",
+          nodes: [
+            textNode("invoice-business-name", 64, 58, 300, 28, [field("Business Name", "business.name")], {
+              fontFamily: "Geist",
+              fontSize: 24,
+              fontWeight: 800,
+              lineHeight: 1,
+              color: "#0f172a"
+            }),
+            textNode("invoice-business-address", 64, 92, 316, 34, [field("Business Address", "business.address")], smallStyle),
+            textNode(
+              "invoice-business-contact",
+              64,
+              128,
+              316,
+              14,
+              [
+                field("Business Phone", "business.phone"),
+                { kind: "text", text: "  |  " },
+                field("Business Email", "business.email")
+              ],
+              smallStyle
+            ),
+            textNode("invoice-title", 508, 58, 244, 34, [{ kind: "text", text: "INVOICE" }], {
+              fontFamily: "Geist",
+              fontSize: 30,
+              fontWeight: 800,
+              lineHeight: 1,
+              color: "#111827",
+              align: "right"
+            }),
+            textNode("invoice-number-label", 510, 104, 86, 12, [{ kind: "text", text: "INVOICE NO." }], labelStyle),
+            textNode("invoice-number", 610, 100, 142, 18, [field("Invoice Number", "invoice.number")], {
+              ...valueStyle,
+              align: "right"
+            }),
+            barcodeNode("invoice-number-barcode", "code128", 588, 124, 164, 28, bindingValue("invoice.number")),
+
+            rect("bill-to-card", 64, 192, 216, 136, "#ffffff", "#cbd5e1"),
+            textNode("bill-to-label", 80, 208, 120, 12, [{ kind: "text", text: "BILL TO" }], labelStyle),
+            textNode("customer-name", 80, 230, 184, 16, [field("Customer Name", "customer.name")], bodyStyle),
+            textNode("customer-address", 80, 252, 184, 44, [field("Customer Address", "customer.address")], smallStyle),
+            textNode("customer-email", 80, 300, 184, 14, [field("Customer Email", "customer.email")], smallStyle),
+
+            rect("ship-to-card", 300, 192, 216, 136, "#ffffff", "#cbd5e1"),
+            textNode("ship-to-label", 316, 208, 120, 12, [{ kind: "text", text: "SHIP TO" }], labelStyle),
+            textNode("ship-to-name", 316, 230, 184, 16, [field("Ship To Name", "delivery.name")], bodyStyle),
+            textNode("ship-to-address", 316, 252, 184, 44, [field("Ship To Address", "delivery.address")], smallStyle),
+            textNode("ship-to-window", 316, 300, 184, 14, [field("Delivery Window", "delivery.window")], smallStyle),
+
+            rect("invoice-meta-card", 536, 192, 216, 136, "#ffffff", "#cbd5e1"),
+            textNode("invoice-date-label", 552, 210, 74, 12, [{ kind: "text", text: "DATE" }], labelStyle),
+            textNode("invoice-date", 640, 208, 88, 14, [field("Invoice Date", "invoice.date", { type: "date", dateStyle: "medium" })], bodyStyle),
+            textNode("invoice-due-label", 552, 238, 74, 12, [{ kind: "text", text: "DUE DATE" }], labelStyle),
+            textNode("invoice-due", 640, 236, 88, 14, [field("Due Date", "invoice.dueDate", { type: "date", dateStyle: "medium" })], bodyStyle),
+            textNode("invoice-terms-label", 552, 266, 74, 12, [{ kind: "text", text: "TERMS" }], labelStyle),
+            textNode("invoice-terms", 640, 264, 88, 14, [field("Terms", "invoice.terms")], bodyStyle),
+            textNode("invoice-po-label", 552, 294, 74, 12, [{ kind: "text", text: "PO NO." }], labelStyle),
+            textNode("invoice-po", 640, 292, 88, 14, [field("PO Number", "invoice.poNumber")], bodyStyle)
+          ]
+        },
+        {
+          id: "flow",
+          kind: "flow",
+          nodes: [
+            {
+              id: "invoice-body",
+              type: "flowRegion",
+              frame: { x: 64, y: 364, width: 688, height: 568 },
+              flowBoundary: "page-margin",
+              children: [
+                {
+                  id: "invoice-items-header",
+                  type: "group",
+                  frame: { x: 0, y: 0, width: 688, height: 34 },
+                  children: [
+                    rect("invoice-items-header-bg", 0, 0, 688, 34, "#eef2ff", "#a5b4fc"),
+                    textNode("invoice-header-description", 14, 10, 314, 12, [{ kind: "text", text: "Description" }], labelStyle),
+                    textNode("invoice-header-qty", 356, 10, 70, 12, [{ kind: "text", text: "Qty" }], labelStyle),
+                    textNode("invoice-header-rate", 456, 10, 86, 12, [{ kind: "text", text: "Unit Price" }], labelStyle),
+                    textNode("invoice-header-total", 596, 10, 76, 12, [{ kind: "text", text: "Total" }], {
+                      ...labelStyle,
+                      align: "right"
+                    })
+                  ]
+                },
+                {
+                  id: "invoice-items-repeat",
+                  type: "repeat",
+                  frame: { x: 0, y: 0, width: 688, height: 34 },
+                  binding: { path: "invoice.items" },
+                  itemAlias: "item",
+                  layout: {
+                    direction: "vertical",
+                    gap: 0,
+                    splitItems: false,
+                    rowSizing: "compact",
+                    minRowHeight: 30,
+                    maxCompressionRatio: 0.1,
+                    fillAvailableSpace: true,
+                    maxExpansionRatio: 0.15
+                  },
+                  children: [
+                    rect("invoice-item-row-bg", 0, 0, 688, 34, "#ffffff", "#e2e8f0"),
+                    textNode("invoice-item-description", 14, 10, 314, 12, [field("Description", "item.description")], bodyStyle),
+                    textNode("invoice-item-qty", 356, 10, 70, 12, [field("Quantity", "item.quantity", { type: "number" })], bodyStyle),
+                    textNode("invoice-item-rate", 456, 10, 86, 12, [field("Unit Price", "item.unitPrice", { type: "currency", currency: "USD" })], bodyStyle),
+                    textNode("invoice-item-total", 596, 10, 76, 12, [field("Line Total", "item.total", { type: "currency", currency: "USD" })], {
+                      ...bodyStyle,
+                      align: "right"
+                    })
+                  ]
+                },
+                {
+                  id: "invoice-summary",
+                  type: "group",
+                  frame: { x: 0, y: 24, width: 688, height: 250 },
+                  children: [
+                    rect("invoice-notes-box", 0, 0, 390, 92, "#f8fafc", "#cbd5e1"),
+                    textNode("invoice-notes-label", 14, 14, 160, 12, [{ kind: "text", text: "NOTES" }], labelStyle),
+                    textNode("invoice-notes", 14, 36, 352, 36, [field("Notes", "invoice.notes")], smallStyle),
+
+                    rect("invoice-totals-box", 430, 0, 258, 132, "#ffffff", "#cbd5e1"),
+                    textNode("invoice-subtotal-label", 448, 18, 110, 12, [{ kind: "text", text: "Subtotal" }], bodyStyle),
+                    textNode("invoice-subtotal", 586, 16, 78, 16, [field("Subtotal", "invoice.totals.subtotal", { type: "currency", currency: "USD" })], {
+                      ...bodyStyle,
+                      align: "right"
+                    }),
+                    textNode("invoice-tax-label", 448, 48, 110, 12, [{ kind: "text", text: "Tax" }], bodyStyle),
+                    textNode("invoice-tax", 586, 46, 78, 16, [field("Tax", "invoice.totals.tax", { type: "currency", currency: "USD" })], {
+                      ...bodyStyle,
+                      align: "right"
+                    }),
+                    textNode("invoice-balance-label", 448, 88, 110, 14, [{ kind: "text", text: "Balance Due" }], {
+                      ...valueStyle,
+                      fontSize: 12
+                    }),
+                    textNode("invoice-balance", 574, 84, 90, 18, [field("Balance Due", "invoice.totals.total", { type: "currency", currency: "USD" })], {
+                      ...valueStyle,
+                      fontSize: 14,
+                      align: "right"
+                    }),
+
+                    textNode("payment-label", 0, 128, 188, 12, [{ kind: "text", text: "PAYMENT LINK" }], labelStyle),
+                    qrNode("payment-qr", 0, 148, 64, bindingValue("invoice.paymentUrl")),
+                    textNode("payment-url", 82, 154, 284, 28, [field("Payment URL", "invoice.paymentUrl")], smallStyle),
+                    textNode("thank-you", 0, 224, 688, 18, [{ kind: "text", text: "Thank you for your business." }], {
+                      ...bodyStyle,
+                      align: "center"
+                    })
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  dataSchema: {
+    fields: [
+      { path: "business.name", label: "Business Name", kind: "string" },
+      { path: "business.address", label: "Business Address", kind: "string" },
+      { path: "business.phone", label: "Business Phone", kind: "string" },
+      { path: "business.email", label: "Business Email", kind: "string" },
+      { path: "customer.name", label: "Customer Name", kind: "string" },
+      { path: "customer.address", label: "Customer Address", kind: "string" },
+      { path: "customer.email", label: "Customer Email", kind: "string" },
+      { path: "delivery.name", label: "Delivery Name", kind: "string" },
+      { path: "delivery.address", label: "Delivery Address", kind: "string" },
+      { path: "delivery.window", label: "Delivery Window", kind: "string" },
+      { path: "invoice.number", label: "Invoice Number", kind: "string" },
+      { path: "invoice.date", label: "Invoice Date", kind: "date" },
+      { path: "invoice.dueDate", label: "Due Date", kind: "date" },
+      { path: "invoice.terms", label: "Terms", kind: "string" },
+      { path: "invoice.poNumber", label: "PO Number", kind: "string" },
+      { path: "invoice.items", label: "Invoice Items", kind: "array" },
+      { path: "invoice.totals.subtotal", label: "Subtotal", kind: "number" },
+      { path: "invoice.totals.tax", label: "Tax", kind: "number" },
+      { path: "invoice.totals.total", label: "Balance Due", kind: "number" },
+      { path: "invoice.notes", label: "Notes", kind: "string" },
+      { path: "invoice.paymentUrl", label: "Payment URL", kind: "string" }
+    ]
+  }
+};
+
+export const invoiceSampleData = {
+  business: {
+    name: "Acme Logistics",
+    address: "123 Industrial Way\nToronto, ON M5V 2T6",
+    phone: "416-555-0123",
+    email: "billing@acmelogistics.example"
+  },
+  customer: {
+    name: "Prairie Retail Group",
+    address: "2100 Centre Ave SE\nCalgary, AB T2A 2L5",
+    email: "ap@prairieretail.example"
+  },
+  delivery: {
+    name: "Prairie Retail Group DC",
+    address: "55 Distribution Way\nCalgary, AB T2C 5R9",
+    window: "Jul 3, 2026, 08:00-12:00"
+  },
+  invoice: {
+    number: "INV-2026-1048",
+    date: "2026-07-01",
+    dueDate: "2026-07-31",
+    terms: "Net 30",
+    poNumber: "PO-45009312",
+    items: [
+      { description: "Freight service - Toronto to Calgary", quantity: 1, unitPrice: 1850, total: 1850 },
+      { description: "Fuel surcharge", quantity: 1, unitPrice: 265.5, total: 265.5 },
+      { description: "Residential delivery appointment", quantity: 1, unitPrice: 95, total: 95 },
+      { description: "Additional handling units", quantity: 4, unitPrice: 42, total: 168 },
+      { description: "Proof of delivery documentation", quantity: 1, unitPrice: 35, total: 35 }
+    ],
+    totals: {
+      subtotal: 2413.5,
+      tax: 313.76,
+      total: 2727.26
+    },
+    notes: "Please include the invoice number with remittance. Late payments may be subject to service charges.",
+    paymentUrl: "https://pay.example/invoices/INV-2026-1048"
+  }
+} satisfies Record<string, unknown>;
