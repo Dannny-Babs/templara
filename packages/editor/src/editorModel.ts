@@ -115,6 +115,121 @@ export interface AlignmentSubject {
   absoluteFrame: Frame;
 }
 
+export type ResizeHandle =
+  | "nw"
+  | "n"
+  | "ne"
+  | "e"
+  | "se"
+  | "s"
+  | "sw"
+  | "w";
+
+export interface ResizeOptions {
+  minSize?: number;
+  lockAspect?: boolean;
+  snap?: (value: number) => number;
+}
+
+const DEFAULT_MIN_RESIZE = 8;
+
+export function getResizeFramePatch(
+  start: Frame,
+  handle: ResizeHandle,
+  delta: Pick<Frame, "x" | "y">,
+  options: ResizeOptions = {},
+): Partial<Frame> {
+  const minSize = Math.max(1, options.minSize ?? DEFAULT_MIN_RESIZE);
+  const lockAspect = options.lockAspect === true;
+  // Aspect-locked resize keeps an exact ratio, so grid snapping is skipped
+  // during a locked gesture to avoid fighting the ratio constraint.
+  const snap = lockAspect ? (value: number) => value : (options.snap ?? identity);
+
+  const movesLeft = handle === "nw" || handle === "w" || handle === "sw";
+  const movesRight = handle === "ne" || handle === "e" || handle === "se";
+  const movesTop = handle === "nw" || handle === "n" || handle === "ne";
+  const movesBottom = handle === "sw" || handle === "s" || handle === "se";
+  const isCorner =
+    (movesLeft || movesRight) && (movesTop || movesBottom);
+
+  let left = start.x;
+  let right = start.x + start.width;
+  let top = start.y;
+  let bottom = start.y + start.height;
+
+  if (movesLeft) {
+    left = snap(start.x + delta.x);
+  }
+
+  if (movesRight) {
+    right = snap(start.x + start.width + delta.x);
+  }
+
+  if (movesTop) {
+    top = snap(start.y + delta.y);
+  }
+
+  if (movesBottom) {
+    bottom = snap(start.y + start.height + delta.y);
+  }
+
+  if (right - left < minSize) {
+    if (movesLeft) {
+      left = right - minSize;
+    } else {
+      right = left + minSize;
+    }
+  }
+
+  if (bottom - top < minSize) {
+    if (movesTop) {
+      top = bottom - minSize;
+    } else {
+      bottom = top + minSize;
+    }
+  }
+
+  if (lockAspect && isCorner && start.height > 0 && start.width > 0) {
+    const ratio = start.width / start.height;
+    const width = right - left;
+    const lockedHeight = Math.max(minSize, width / ratio);
+
+    if (movesTop) {
+      top = bottom - lockedHeight;
+    } else {
+      bottom = top + lockedHeight;
+    }
+  }
+
+  const patch: Partial<Frame> = {};
+
+  if (movesLeft || movesRight) {
+    patch.width = roundFrameValue(right - left);
+  }
+
+  if (movesTop || movesBottom) {
+    patch.height = roundFrameValue(bottom - top);
+  }
+
+  if (movesLeft) {
+    patch.x = roundFrameValue(left);
+  }
+
+  if (movesTop) {
+    patch.y = roundFrameValue(top);
+  }
+
+  return patch;
+}
+
+function identity(value: number): number {
+  return value;
+}
+
+function roundFrameValue(value: number): number {
+  return Math.round(value);
+}
+
 interface RenderContext {
   pageId: string;
   layerId: string;
@@ -205,6 +320,457 @@ export function updateNodesById(
   }
 
   return changed;
+}
+
+export type ReorderCommand = "front" | "back" | "forward" | "backward";
+
+export function findEditableNode(
+  template: DocumentTemplate,
+  nodeId: string,
+): EditableNode | undefined {
+  for (const page of template.pages) {
+    for (const layer of page.layers) {
+      const found = findNodeInCollection(layer.nodes, nodeId);
+
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function findNodeInCollection(
+  nodes: EditableNode[],
+  nodeId: string,
+): EditableNode | undefined {
+  for (const node of nodes) {
+    if (node.id === nodeId) {
+      return node;
+    }
+
+    for (const children of getChildCollections(node)) {
+      const found = findNodeInCollection(children, nodeId);
+
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Moves a node within its containing collection (layer or nested children).
+ * Later positions render on top. Returns true when the order changed.
+ */
+export function reorderNodeInTemplate(
+  template: DocumentTemplate,
+  nodeId: string,
+  command: ReorderCommand,
+): boolean {
+  for (const page of template.pages) {
+    for (const layer of page.layers) {
+      if (reorderInCollection(layer.nodes, nodeId, command)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function reorderInCollection(
+  nodes: EditableNode[],
+  nodeId: string,
+  command: ReorderCommand,
+): boolean {
+  const index = nodes.findIndex((node) => node.id === nodeId);
+
+  if (index >= 0) {
+    const last = nodes.length - 1;
+
+    if ((command === "front" || command === "forward") && index === last) {
+      return false;
+    }
+
+    if ((command === "back" || command === "backward") && index === 0) {
+      return false;
+    }
+
+    const [node] = nodes.splice(index, 1);
+    const target =
+      command === "front"
+        ? nodes.length
+        : command === "back"
+          ? 0
+          : command === "forward"
+            ? index + 1
+            : index - 1;
+    nodes.splice(target, 0, node);
+    return true;
+  }
+
+  for (const node of nodes) {
+    for (const children of getChildCollections(node)) {
+      if (reorderInCollection(children, nodeId, command)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Wraps a set of direct sibling nodes in a new group. The group frame is the
+ * bounding box of the selection, and each child's frame is rebased to the group
+ * origin. Only succeeds when every id is a direct child of the same collection.
+ * Returns the new group id, or undefined if the selection cannot be grouped.
+ */
+export function groupNodesInTemplate(
+  template: DocumentTemplate,
+  nodeIds: string[],
+  groupId: string,
+): string | undefined {
+  if (nodeIds.length < 2) {
+    return undefined;
+  }
+
+  for (const page of template.pages) {
+    for (const layer of page.layers) {
+      if (groupSiblingsInCollection(layer.nodes, nodeIds, groupId)) {
+        return groupId;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function groupSiblingsInCollection(
+  nodes: EditableNode[],
+  nodeIds: string[],
+  groupId: string,
+): boolean {
+  const idSet = new Set(nodeIds);
+  const indices = nodes
+    .map((node, index) => (idSet.has(node.id) ? index : -1))
+    .filter((index) => index >= 0);
+
+  if (indices.length !== nodeIds.length) {
+    return false;
+  }
+
+  const selected = indices.map((index) => nodes[index]);
+  const bounds = getBounds(selected.map((node) => node.frame));
+  const group: GroupNode = {
+    id: groupId,
+    type: "group",
+    frame: bounds,
+    children: selected.map((node) => ({
+      ...node,
+      frame: {
+        ...node.frame,
+        x: node.frame.x - bounds.x,
+        y: node.frame.y - bounds.y,
+      },
+    })) as DocNode[],
+  };
+  const insertAt = Math.min(...indices);
+
+  for (const index of [...indices].sort((a, b) => b - a)) {
+    nodes.splice(index, 1);
+  }
+
+  nodes.splice(insertAt, 0, group);
+  return true;
+}
+
+/**
+ * Replaces a group with its children, rebasing child frames back into the
+ * parent coordinate space. Returns the freed child ids, or undefined when no
+ * matching group exists.
+ */
+export function ungroupNodeInTemplate(
+  template: DocumentTemplate,
+  groupId: string,
+): string[] | undefined {
+  for (const page of template.pages) {
+    for (const layer of page.layers) {
+      const ids = ungroupInCollection(layer.nodes, groupId);
+
+      if (ids) {
+        return ids;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function ungroupInCollection(
+  nodes: EditableNode[],
+  groupId: string,
+): string[] | undefined {
+  const index = nodes.findIndex(
+    (node) => node.id === groupId && node.type === "group",
+  );
+
+  if (index >= 0) {
+    const group = nodes[index] as GroupNode;
+    const children = group.children.map((child) => ({
+      ...child,
+      frame: {
+        ...child.frame,
+        x: child.frame.x + group.frame.x,
+        y: child.frame.y + group.frame.y,
+      },
+    }));
+
+    nodes.splice(index, 1, ...(children as EditableNode[]));
+    return children.map((child) => child.id);
+  }
+
+  for (const node of nodes) {
+    for (const children of getChildCollections(node)) {
+      const ids = ungroupInCollection(children, groupId);
+
+      if (ids) {
+        return ids;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+export type MoveNodePosition = "before" | "after" | "inside";
+
+export interface MoveNodeTarget {
+  referenceId: string;
+  position: MoveNodePosition;
+}
+
+/**
+ * Moves a node to a new location expressed relative to a reference node:
+ * dropped `before`/`after` a sibling, or `inside` a container as its last
+ * child. Frames are rebased from the node's current absolute position into the
+ * target parent's coordinate space (mirroring group/ungroup rebasing), so the
+ * node stays visually put when it changes parents. Moving a container into its
+ * own subtree is rejected. Returns true when the template changed.
+ */
+export function moveNodeInTemplate(
+  template: DocumentTemplate,
+  nodeId: string,
+  target: MoveNodeTarget,
+): boolean {
+  if (nodeId === target.referenceId && target.position !== "inside") {
+    return false;
+  }
+
+  const itemMap = new Map<string, EditorNodeItem>();
+  for (const page of template.pages) {
+    for (const item of collectPageNodeItems(template, page.id)) {
+      itemMap.set(item.id, item);
+    }
+  }
+
+  const movedItem = itemMap.get(nodeId);
+  const referenceItem = itemMap.get(target.referenceId);
+
+  if (!movedItem || !referenceItem) {
+    return false;
+  }
+
+  // Never allow a node to be dropped into its own subtree.
+  const descendantIds = collectDescendantIds(movedItem.node);
+  if (
+    target.referenceId === nodeId ||
+    descendantIds.has(target.referenceId)
+  ) {
+    return false;
+  }
+
+  const contentOrigin =
+    target.position === "inside"
+      ? getContainerContentOrigin(referenceItem, itemMap)
+      : {
+          x: referenceItem.absoluteFrame.x - referenceItem.frame.x,
+          y: referenceItem.absoluteFrame.y - referenceItem.frame.y,
+        };
+
+  if (!contentOrigin) {
+    return false;
+  }
+
+  const movedAbsolute = movedItem.absoluteFrame;
+  const removed = removeNodeFromTemplate(template, nodeId);
+
+  if (!removed) {
+    return false;
+  }
+
+  removed.frame = {
+    ...removed.frame,
+    x: movedAbsolute.x - contentOrigin.x,
+    y: movedAbsolute.y - contentOrigin.y,
+  };
+
+  if (target.position === "inside") {
+    const container = findEditableNode(template, target.referenceId);
+    const collection = container
+      ? getWritableChildCollection(container)
+      : undefined;
+
+    if (!collection) {
+      return false;
+    }
+
+    collection.push(removed);
+    return true;
+  }
+
+  const location = findCollectionContaining(template, target.referenceId);
+
+  if (!location) {
+    return false;
+  }
+
+  const referenceIndex = location.collection.findIndex(
+    (node) => node.id === target.referenceId,
+  );
+
+  if (referenceIndex < 0) {
+    return false;
+  }
+
+  const insertAt =
+    target.position === "before" ? referenceIndex : referenceIndex + 1;
+  location.collection.splice(insertAt, 0, removed);
+  return true;
+}
+
+function getContainerContentOrigin(
+  container: EditorNodeItem,
+  itemMap: Map<string, EditorNodeItem>,
+): { x: number; y: number } | undefined {
+  const collections = getChildCollections(container.node);
+  const firstChild = collections[0]?.[0];
+  const childItem = firstChild ? itemMap.get(firstChild.id) : undefined;
+
+  if (childItem) {
+    return {
+      x: childItem.absoluteFrame.x - childItem.frame.x,
+      y: childItem.absoluteFrame.y - childItem.frame.y,
+    };
+  }
+
+  if (!isContainerNode(container.node)) {
+    return undefined;
+  }
+
+  // Empty container (e.g. a shape with no children yet): fall back to the
+  // container's own absolute origin. Padded containers may be off by their
+  // padding, but this only affects the very first child dropped in.
+  return { x: container.absoluteFrame.x, y: container.absoluteFrame.y };
+}
+
+function collectDescendantIds(node: EditableNode): Set<string> {
+  const ids = new Set<string>();
+
+  const walk = (current: EditableNode): void => {
+    for (const children of getChildCollections(current)) {
+      for (const child of children) {
+        ids.add(child.id);
+        walk(child);
+      }
+    }
+  };
+
+  walk(node);
+  return ids;
+}
+
+function removeNodeFromTemplate(
+  template: DocumentTemplate,
+  nodeId: string,
+): EditableNode | undefined {
+  for (const page of template.pages) {
+    for (const layer of page.layers) {
+      const removed = removeNodeFromCollection(layer.nodes, nodeId);
+
+      if (removed) {
+        return removed;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function removeNodeFromCollection(
+  nodes: EditableNode[],
+  nodeId: string,
+): EditableNode | undefined {
+  const index = nodes.findIndex((node) => node.id === nodeId);
+
+  if (index >= 0) {
+    const [removed] = nodes.splice(index, 1);
+    return removed;
+  }
+
+  for (const node of nodes) {
+    for (const children of getChildCollections(node)) {
+      const removed = removeNodeFromCollection(children, nodeId);
+
+      if (removed) {
+        return removed;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function findCollectionContaining(
+  template: DocumentTemplate,
+  nodeId: string,
+): { collection: EditableNode[] } | undefined {
+  for (const page of template.pages) {
+    for (const layer of page.layers) {
+      const found = findCollectionInNodes(layer.nodes, nodeId);
+
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function findCollectionInNodes(
+  nodes: EditableNode[],
+  nodeId: string,
+): { collection: EditableNode[] } | undefined {
+  if (nodes.some((node) => node.id === nodeId)) {
+    return { collection: nodes };
+  }
+
+  for (const node of nodes) {
+    for (const children of getChildCollections(node)) {
+      const found = findCollectionInNodes(children, nodeId);
+
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 export function getAlignmentFramePatches(
@@ -506,12 +1072,18 @@ function renderRepeatNode(
   path: string,
 ): EditorRenderNode[] {
   const absoluteFrame = editorFrameForNode(node, context.origin);
-  const childContext: RenderContext = {
+  const header = node.header ?? [];
+  const headerHeight = header.length > 0 ? measureChildrenBottom(header) : 0;
+  const headerContext: RenderContext = {
     ...context,
     depth: context.depth + 1,
     parentPath: path,
     parentId: node.id,
     origin: { x: absoluteFrame.x, y: absoluteFrame.y },
+  };
+  const rowContext: RenderContext = {
+    ...headerContext,
+    origin: { x: absoluteFrame.x, y: absoluteFrame.y + headerHeight },
   };
 
   return [
@@ -522,7 +1094,8 @@ function renderRepeatNode(
       "repeat",
       `Repeat: ${node.binding.path}`,
     ),
-    ...renderNodeCollection(node.children, childContext),
+    ...(header.length > 0 ? renderNodeCollection(header, headerContext) : []),
+    ...renderNodeCollection(node.children, rowContext),
   ];
 }
 
@@ -951,20 +1524,66 @@ function updateNodeFramesInCollection(
 
 function getChildCollections(node: EditableNode): EditableNode[][] {
   switch (node.type) {
+    case "shape":
+      return node.children ? [node.children] : [];
     case "group":
     case "flowRegion":
     case "section":
     case "stack":
       return [node.children];
-    case "repeat":
-      return node.emptyState
-        ? [node.children, node.emptyState]
-        : [node.children];
+    case "repeat": {
+      const collections: EditableNode[][] = [node.children];
+      if (node.header) {
+        collections.push(node.header);
+      }
+      if (node.emptyState) {
+        collections.push(node.emptyState);
+      }
+      return collections;
+    }
     case "conditional":
       return node.fallback ? [node.children, node.fallback] : [node.children];
     default:
       return [];
   }
+}
+
+/**
+ * Whether a node can hold children (and therefore accept "inside" drops and
+ * show a collapse caret in the layers panel). Shapes are included so they can
+ * be used as containers/backgrounds.
+ */
+function isContainerNode(node: EditableNode): boolean {
+  switch (node.type) {
+    case "shape":
+    case "group":
+    case "flowRegion":
+    case "section":
+    case "stack":
+    case "repeat":
+    case "conditional":
+      return true;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Returns the primary child collection to insert into, initializing the array
+ * for shapes (whose `children` starts undefined) so the first "inside" drop has
+ * somewhere to land. Returns undefined for non-container nodes.
+ */
+function getWritableChildCollection(
+  node: EditableNode,
+): EditableNode[] | undefined {
+  if (node.type === "shape") {
+    if (!node.children) {
+      node.children = [];
+    }
+    return node.children as EditableNode[];
+  }
+
+  return getChildCollections(node)[0];
 }
 
 function measureEditorFlowNodeHeight(node: FlowNode): number {
@@ -1161,7 +1780,11 @@ function stackLabel(node: StackNode): string {
 }
 
 function repeatEditorHeight(node: RepeatNode): number {
-  return Math.max(node.frame.height, measureChildrenBottom(node.children) + 92);
+  const headerHeight = node.header?.length ? measureChildrenBottom(node.header) : 0;
+  return Math.max(
+    node.frame.height,
+    headerHeight + measureChildrenBottom(node.children) + 92,
+  );
 }
 
 function bindingPlaceholder(binding: BindingRef): string {

@@ -14,6 +14,7 @@ import type {
   MouseEvent,
   PointerEvent,
   ReactElement,
+  ReactNode,
 } from "react";
 import type { IconSvgElement } from "@hugeicons/react";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -32,7 +33,6 @@ import {
   BendToolIcon,
   Link01Icon,
   MinusSignIcon,
-  Pan03Icon,
   QrCodeIcon,
   RepeatIcon,
   Redo03Icon,
@@ -43,6 +43,10 @@ import {
   Undo03Icon,
   ViewIcon,
 } from "@hugeicons-pro/core-stroke-rounded";
+import {
+  ChevronDownIcon as ChevronDownSharpIcon,
+  ChevronRightIcon as ChevronRightSharpIcon,
+} from "@hugeicons-pro/core-stroke-sharp";
 import type {
   BarcodeNode,
   ConditionalNode,
@@ -62,17 +66,37 @@ import type {
 } from "@templara/core";
 import { DocumentPreview } from "@templara/react-renderer";
 import { renderDocument } from "@templara/renderer";
+import type { ExportPreflight } from "@templara/pdf";
+import {
+  buildExportFontCss,
+  collectExportDiagnostics,
+  exportPreviewToPdf,
+} from "@templara/pdf";
 import type {
   EditorNodeItem,
   EditorRenderNode,
   EditorVisual,
+  ResizeHandle,
 } from "./editorModel";
+import type { ReorderCommand } from "./editorModel";
 import {
   buildEditorPageModel,
   collectPageNodeItems,
+  findEditableNode,
+  getResizeFramePatch,
+  groupNodesInTemplate,
+  moveNodeInTemplate,
+  reorderNodeInTemplate,
+  ungroupNodeInTemplate,
   updateNodeById,
   updateNodesById,
 } from "./editorModel";
+import type { HistoryTransaction } from "./history";
+import {
+  DEFAULT_HISTORY_COALESCE_MS,
+  advanceHistoryTransaction,
+  shouldStartNewHistoryEntry,
+} from "./history";
 import type { DataExplorerField, DataExplorerGroup } from "./dataExplorer";
 import {
   applyDataBindingToNode,
@@ -102,6 +126,8 @@ export {
 const DEFAULT_ZOOM = 0.76;
 const GRID_SIZE = 8;
 const SNAP_THRESHOLD = 5;
+const NUDGE_STEP = 1;
+const NUDGE_LARGE_STEP = 10;
 const RULER_SIZE = 24;
 const TOOLTIP_DELAY_MS = 420;
 const BINDING_DRAG_TYPE = "application/x-templara-binding";
@@ -131,9 +157,16 @@ export interface DocumentEditorProps {
   onDataChange?: (nextData: Record<string, unknown>) => void;
   initialPageId?: string;
   onActivePageChange?: (pageId: string) => void;
+  /**
+   * Optional custom control rendered in the top toolbar next to the document
+   * title (e.g. a template switcher supplied by the host app). Kept out of the
+   * action cluster so it never overlaps Preview/Save.
+   */
+  toolbarAccessory?: ReactNode;
 }
 
 type EditableNode = DocNode | FlowNode;
+type PreviewMode = "sample" | "large" | "export";
 type InsertTool =
   | "select"
   | "text"
@@ -156,6 +189,16 @@ interface DragState {
   startClientY: number;
   startFrames: Record<string, Frame>;
   startAbsoluteFrames: Record<string, Frame>;
+  startTemplate: DocumentTemplate;
+  historyRecorded: boolean;
+}
+
+interface ResizeState {
+  nodeId: string;
+  handle: ResizeHandle;
+  startClientX: number;
+  startClientY: number;
+  startFrame: Frame;
   startTemplate: DocumentTemplate;
   historyRecorded: boolean;
 }
@@ -184,8 +227,26 @@ interface LayerTreeRow {
   depth: number;
   kind: "page" | "section" | "node";
   iconSrc: string;
+  type?: string;
   nodeId?: string;
   pageId?: string;
+  parentId?: string;
+  isContainer?: boolean;
+  hasChildren?: boolean;
+  collapsed?: boolean;
+}
+
+type LayerDropIntent = "before" | "after" | "inside";
+
+interface LayerMoveTarget {
+  referenceId: string;
+  position: LayerDropIntent;
+}
+
+interface DropdownFrame {
+  top: number;
+  left: number;
+  width: number;
 }
 
 const sidebarIcons = {
@@ -233,6 +294,7 @@ export function DocumentEditor({
   onDataChange,
   initialPageId,
   onActivePageChange,
+  toolbarAccessory,
 }: DocumentEditorProps): ReactElement {
   const [draftTemplate, setDraftTemplate] = useState<DocumentTemplate>(() =>
     structuredClone(value),
@@ -260,8 +322,14 @@ export function DocumentEditor({
   const [horizontalGuides, setHorizontalGuides] = useState<number[]>([]);
   const [activeGuides, setActiveGuides] = useState<ActiveGuide[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState<PreviewMode>("sample");
+  const [collapsedLayerIds, setCollapsedLayerIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const dragState = useRef<DragState | null>(null);
+  const resizeState = useRef<ResizeState | null>(null);
   const guideDragState = useRef<GuideDragState | null>(null);
+  const historyTransaction = useRef<HistoryTransaction | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const [inspectorWidth, setInspectorWidth] = useState(INSPECTOR_PANEL_WIDTH);
   const [dataPanelHeight, setDataPanelHeight] = useState(DATA_PANEL_DEFAULT_HEIGHT);
@@ -371,14 +439,19 @@ export function DocumentEditor({
       }),
     [draftData, draftTemplate, nodeItems, selectedNodeIds],
   );
+  const previewData = useMemo(
+    () =>
+      previewMode === "large" ? amplifyPreviewData(draftData) : draftData,
+    [draftData, previewMode],
+  );
   const previewDocument = useMemo(
     () =>
       renderDocument({
         template: draftTemplate,
-        data: draftData,
+        data: previewData,
         mode: "preview",
       }),
-    [draftData, draftTemplate],
+    [previewData, draftTemplate],
   );
   const fontImports = useMemo(
     () => buildFontImports(draftTemplate),
@@ -419,12 +492,31 @@ export function DocumentEditor({
   }, [fontImports]);
 
   const commitTemplate = useCallback(
-    (nextTemplate: DocumentTemplate, options: { history?: boolean } = {}) => {
+    (
+      nextTemplate: DocumentTemplate,
+      options: { history?: boolean; transaction?: string } = {},
+    ) => {
       if (options.history !== false) {
-        setHistoryPast((past) =>
-          [...past, structuredClone(draftTemplate)].slice(-80),
+        const now = Date.now();
+
+        if (
+          shouldStartNewHistoryEntry(
+            historyTransaction.current,
+            options.transaction,
+            now,
+            DEFAULT_HISTORY_COALESCE_MS,
+          )
+        ) {
+          setHistoryPast((past) =>
+            [...past, structuredClone(draftTemplate)].slice(-80),
+          );
+          setHistoryFuture([]);
+        }
+
+        historyTransaction.current = advanceHistoryTransaction(
+          options.transaction,
+          now,
         );
-        setHistoryFuture([]);
       }
 
       setDraftTemplate(nextTemplate);
@@ -436,7 +528,7 @@ export function DocumentEditor({
   const updateFramePatches = useCallback(
     (
       patches: Record<string, Partial<Frame>>,
-      options: { history?: boolean } = {},
+      options: { history?: boolean; transaction?: string } = {},
     ) => {
       const nextTemplate = structuredClone(draftTemplate);
 
@@ -448,11 +540,15 @@ export function DocumentEditor({
   );
 
   const updateNode = useCallback(
-    (nodeId: string, update: (node: EditableNode) => void) => {
+    (
+      nodeId: string,
+      update: (node: EditableNode) => void,
+      options: { history?: boolean; transaction?: string } = {},
+    ) => {
       const nextTemplate = structuredClone(draftTemplate);
 
       if (updateNodeById(nextTemplate, nodeId, update)) {
-        commitTemplate(nextTemplate);
+        commitTemplate(nextTemplate, options);
       }
     },
     [commitTemplate, draftTemplate],
@@ -473,7 +569,7 @@ export function DocumentEditor({
       }
 
       update(page);
-      commitTemplate(nextTemplate);
+      commitTemplate(nextTemplate, { transaction: `page:${pageId}` });
     },
     [commitTemplate, draftTemplate],
   );
@@ -495,6 +591,7 @@ export function DocumentEditor({
     }
 
     const nextTemplate = structuredClone(previous);
+    historyTransaction.current = null;
     setHistoryPast((past) => past.slice(0, -1));
     setHistoryFuture((future) =>
       [structuredClone(draftTemplate), ...future].slice(0, 80),
@@ -511,6 +608,7 @@ export function DocumentEditor({
     }
 
     const nextTemplate = structuredClone(next);
+    historyTransaction.current = null;
     setHistoryFuture((future) => future.slice(1));
     setHistoryPast((past) =>
       [...past, structuredClone(draftTemplate)].slice(-80),
@@ -540,6 +638,10 @@ export function DocumentEditor({
       let changed = false;
 
       for (const nodeId of nodeIds) {
+        if (findEditableNode(nextTemplate, nodeId)?.locked === true) {
+          continue;
+        }
+
         changed = deleteNodeFromTemplate(nextTemplate, nodeId) || changed;
       }
 
@@ -552,6 +654,80 @@ export function DocumentEditor({
     },
     [commitTemplate, draftTemplate],
   );
+
+  const reorderSelected = useCallback(
+    (command: ReorderCommand) => {
+      if (selectedNodeIds.length !== 1) {
+        return;
+      }
+
+      const nextTemplate = structuredClone(draftTemplate);
+
+      if (reorderNodeInTemplate(nextTemplate, selectedNodeIds[0], command)) {
+        commitTemplate(nextTemplate);
+      }
+    },
+    [commitTemplate, draftTemplate, selectedNodeIds],
+  );
+
+  const handleToggleLayerCollapse = useCallback((nodeId: string) => {
+    setCollapsedLayerIds((current) => {
+      const next = new Set(current);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleMoveLayerNode = useCallback(
+    (nodeId: string, target: LayerMoveTarget) => {
+      const nextTemplate = structuredClone(draftTemplate);
+
+      if (moveNodeInTemplate(nextTemplate, nodeId, target)) {
+        commitTemplate(nextTemplate, { transaction: `move-layer-${nodeId}` });
+      }
+    },
+    [commitTemplate, draftTemplate],
+  );
+
+  const groupSelected = useCallback(() => {
+    if (selectedNodeIds.length < 2) {
+      return;
+    }
+
+    const nextTemplate = structuredClone(draftTemplate);
+    const groupId = groupNodesInTemplate(
+      nextTemplate,
+      selectedNodeIds,
+      createNodeId(nextTemplate, "group"),
+    );
+
+    if (!groupId) {
+      return;
+    }
+
+    commitTemplate(nextTemplate);
+    setSelectedNodeIds([groupId]);
+  }, [commitTemplate, draftTemplate, selectedNodeIds]);
+
+  const ungroupSelected = useCallback(() => {
+    if (selectedNodeIds.length !== 1) {
+      return;
+    }
+
+    const nextTemplate = structuredClone(draftTemplate);
+    const freed = ungroupNodeInTemplate(nextTemplate, selectedNodeIds[0]);
+
+    if (!freed) {
+      return;
+    }
+
+    commitTemplate(nextTemplate);
+    setSelectedNodeIds(freed);
+  }, [commitTemplate, draftTemplate, selectedNodeIds]);
 
   const setActivePage = useCallback(
     (pageId: string) => {
@@ -609,7 +785,84 @@ export function DocumentEditor({
         return;
       }
 
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "g"
+      ) {
+        event.preventDefault();
+        if (event.shiftKey) {
+          ungroupSelected();
+        } else {
+          groupSelected();
+        }
+        return;
+      }
+
+      if (
+        selectedNodeIds.length === 1 &&
+        (event.metaKey || event.ctrlKey) &&
+        (event.key === "]" || event.key === "[")
+      ) {
+        event.preventDefault();
+        const forward = event.key === "]";
+        reorderSelected(
+          event.shiftKey
+            ? forward
+              ? "front"
+              : "back"
+            : forward
+              ? "forward"
+              : "backward",
+        );
+        return;
+      }
+
       if (event.metaKey || event.ctrlKey) {
+        return;
+      }
+
+      if (selectedNodeIds.length > 0 && event.key.startsWith("Arrow")) {
+        const step = event.shiftKey ? NUDGE_LARGE_STEP : NUDGE_STEP;
+        const dx =
+          event.key === "ArrowLeft"
+            ? -step
+            : event.key === "ArrowRight"
+              ? step
+              : 0;
+        const dy =
+          event.key === "ArrowUp"
+            ? -step
+            : event.key === "ArrowDown"
+              ? step
+              : 0;
+
+        if (dx === 0 && dy === 0) {
+          return;
+        }
+
+        event.preventDefault();
+        const patches: Record<string, Partial<Frame>> = {};
+
+        for (const id of selectedNodeIds) {
+          const item = itemLookup.get(id);
+
+          if (!item || item.node.locked === true) {
+            continue;
+          }
+
+          patches[id] = {
+            x: roundFrameValue(item.frame.x + dx),
+            y: roundFrameValue(item.frame.y + dy),
+          };
+        }
+
+        if (Object.keys(patches).length === 0) {
+          return;
+        }
+
+        updateFramePatches(patches, {
+          transaction: `nudge:${selectedNodeIds.join(",")}`,
+        });
         return;
       }
 
@@ -638,10 +891,15 @@ export function DocumentEditor({
   }, [
     deleteNodes,
     duplicateNode,
+    groupSelected,
+    itemLookup,
     previewOpen,
     redoTemplate,
+    reorderSelected,
     selectedNodeIds,
+    ungroupSelected,
     undoTemplate,
+    updateFramePatches,
   ]);
 
   useEffect(() => {
@@ -655,6 +913,40 @@ export function DocumentEditor({
           setVerticalGuides,
           setHorizontalGuides,
         );
+        return;
+      }
+
+      const resize = resizeState.current;
+
+      if (resize) {
+        const delta = {
+          x: (event.clientX - resize.startClientX) / zoom,
+          y: (event.clientY - resize.startClientY) / zoom,
+        };
+        const patch = getResizeFramePatch(resize.startFrame, resize.handle, delta, {
+          lockAspect: event.shiftKey,
+          snap: (value) => snapCoordinate(value, snapToGrid),
+        });
+
+        const changed =
+          (patch.x != null && patch.x !== resize.startFrame.x) ||
+          (patch.y != null && patch.y !== resize.startFrame.y) ||
+          (patch.width != null && patch.width !== resize.startFrame.width) ||
+          (patch.height != null && patch.height !== resize.startFrame.height);
+
+        if (!changed) {
+          return;
+        }
+
+        if (!resize.historyRecorded) {
+          setHistoryPast((past) =>
+            [...past, structuredClone(resize.startTemplate)].slice(-80),
+          );
+          setHistoryFuture([]);
+          resize.historyRecorded = true;
+        }
+
+        updateFramePatches({ [resize.nodeId]: patch }, { history: false });
         return;
       }
 
@@ -718,6 +1010,7 @@ export function DocumentEditor({
 
     function handlePointerUp(): void {
       dragState.current = null;
+      resizeState.current = null;
       guideDragState.current = null;
       setActiveGuides([]);
     }
@@ -754,16 +1047,53 @@ export function DocumentEditor({
         .filter((item): item is EditorNodeItem => Boolean(item));
 
       setSelectedNodeIds(nextSelection);
+
+      const movableItems = dragItems.filter(
+        (item) => item.node.locked !== true,
+      );
+
+      if (movableItems.length === 0) {
+        dragState.current = null;
+        return;
+      }
+
       dragState.current = {
-        nodeIds: dragItems.map((item) => item.id),
+        nodeIds: movableItems.map((item) => item.id),
         startClientX: event.clientX,
         startClientY: event.clientY,
         startFrames: Object.fromEntries(
-          dragItems.map((item) => [item.id, item.frame]),
+          movableItems.map((item) => [item.id, item.frame]),
         ),
         startAbsoluteFrames: Object.fromEntries(
-          dragItems.map((item) => [item.id, item.absoluteFrame]),
+          movableItems.map((item) => [item.id, item.absoluteFrame]),
         ),
+        startTemplate: structuredClone(draftTemplate),
+        historyRecorded: false,
+      };
+    },
+    [draftTemplate, itemLookup, selectedNodeIds],
+  );
+
+  const handleStartResize = useCallback(
+    (event: PointerEvent<HTMLElement>, handle: ResizeHandle) => {
+      event.stopPropagation();
+
+      if (selectedNodeIds.length !== 1) {
+        return;
+      }
+
+      const item = itemLookup.get(selectedNodeIds[0]);
+
+      if (!item || item.node.locked === true) {
+        return;
+      }
+
+      resizeState.current = {
+        nodeId: item.id,
+        handle,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startFrame: item.frame,
         startTemplate: structuredClone(draftTemplate),
         historyRecorded: false,
       };
@@ -819,13 +1149,18 @@ export function DocumentEditor({
         return;
       }
 
-      updateFramePatches({
-        [nodeId]: {
-          ...patch,
-          x: patch.x == null ? undefined : snapCoordinate(patch.x, snapToGrid),
-          y: patch.y == null ? undefined : snapCoordinate(patch.y, snapToGrid),
+      updateFramePatches(
+        {
+          [nodeId]: {
+            ...patch,
+            x:
+              patch.x == null ? undefined : snapCoordinate(patch.x, snapToGrid),
+            y:
+              patch.y == null ? undefined : snapCoordinate(patch.y, snapToGrid),
+          },
         },
-      });
+        { transaction: `frame:${nodeId}` },
+      );
     },
     [itemLookup, snapToGrid, updateFramePatches],
   );
@@ -953,8 +1288,12 @@ export function DocumentEditor({
           );
         }
       },
-      onPreview: () => setPreviewOpen(true),
+      onPreview: (mode: PreviewMode) => {
+        setPreviewMode(mode);
+        setPreviewOpen(true);
+      },
       onSave: () => onChange?.(draftTemplate),
+      accessory: toolbarAccessory,
     }),
     createElement(ToolRail, { activeTool, onSelectTool: setActiveTool }),
     createElement(
@@ -970,8 +1309,11 @@ export function DocumentEditor({
         items: nodeItems,
         activePageId,
         selectedNodeIds,
+        collapsedIds: collapsedLayerIds,
         onSelectPage: setActivePage,
         onSelect: handleLayerSelect,
+        onToggleCollapse: handleToggleLayerCollapse,
+        onMoveNode: handleMoveLayerNode,
       }),
       createElement("div", {
         style: { ...panelRowResizeHandleStyle, bottom: dataPanelHeight - 3 },
@@ -1001,6 +1343,7 @@ export function DocumentEditor({
         horizontalGuides,
         boardRef,
         onNodePointerDown: handleNodePointerDown,
+        onStartResize: handleStartResize,
         onPagePointerDown: handlePagePointerDown,
         onBindingDrop: handleBindingDrop,
         onStartGuideDrag: (axis, index) => {
@@ -1034,8 +1377,8 @@ export function DocumentEditor({
             dispatch: dispatchInspectorUi,
             onFrameCommit: (framePatch) =>
               handleFrameChange(primarySelectedItem.id, framePatch),
-            onNodeCommit: (update) =>
-              updateNode(primarySelectedItem.id, update),
+            onNodeCommit: (update, options) =>
+              updateNode(primarySelectedItem.id, update, options),
             onDuplicate: () => duplicateNode(primarySelectedItem.id),
             onDelete: () => deleteNodes(selectedNodeIds),
           })
@@ -1068,6 +1411,8 @@ export function DocumentEditor({
     previewOpen
       ? createElement(PreviewOverlay, {
           document: previewDocument,
+          title: templateDisplayName(draftTemplate),
+          autoExport: previewMode === "export",
           onClose: () => setPreviewOpen(false),
         })
       : null,
@@ -1088,6 +1433,51 @@ function cloneEditorData(
   data: Record<string, unknown> | undefined,
 ): Record<string, unknown> | undefined {
   return data ? structuredClone(data) : undefined;
+}
+
+const LARGE_PREVIEW_TARGET_ROWS = 50;
+
+/**
+ * Builds a "stress" dataset for the large-data preview by expanding every array
+ * it finds (line items, rows, etc.) to {@link LARGE_PREVIEW_TARGET_ROWS} entries
+ * by cycling the original elements. Nested arrays inside those elements are left
+ * at their original size to avoid combinatorial blow-up.
+ */
+function amplifyPreviewData(
+  data: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!data) {
+    return data;
+  }
+
+  return amplifyPreviewValue(data) as Record<string, unknown>;
+}
+
+function amplifyPreviewValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return value;
+    }
+
+    const expanded: unknown[] = [];
+    let index = 0;
+    while (expanded.length < LARGE_PREVIEW_TARGET_ROWS) {
+      expanded.push(structuredClone(value[index % value.length]));
+      index += 1;
+    }
+    return expanded;
+  }
+
+  if (value && typeof value === "object") {
+    const source = value as Record<string, unknown>;
+    const next: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(source)) {
+      next[key] = amplifyPreviewValue(entry);
+    }
+    return next;
+  }
+
+  return value;
 }
 
 function ToolRail({
@@ -1153,6 +1543,7 @@ function ToolRail({
           style: railIconStyle,
           size: 16,
         }),
+        createElement("span", { style: railLabelStyle }, tool.label),
         tooltipTool === tool.id
           ? createElement(
               "span",
@@ -1263,6 +1654,7 @@ function TopToolbar({
   onCopyTemplate,
   onPreview,
   onSave,
+  accessory,
 }: {
   templateName: string;
   zoom: number;
@@ -1273,8 +1665,9 @@ function TopToolbar({
   onUndo: () => void;
   onRedo: () => void;
   onCopyTemplate: () => void;
-  onPreview: () => void;
+  onPreview: (mode: PreviewMode) => void;
   onSave: () => void;
+  accessory?: ReactNode;
 }): ReactElement {
   return createElement(
     "header",
@@ -1293,7 +1686,7 @@ function TopToolbar({
       ),
       createElement("div", { style: brandNameStyle }, "Templara"),
       createElement("span", { style: toolbarDividerStyle }),
-      createElement("div", { style: templateTitleStyle }, templateName),
+      accessory ?? createElement("div", { style: templateTitleStyle }, templateName),
       createElement("span", { style: statusPillStyle }, "Draft"),
     ),
     createElement(
@@ -1318,13 +1711,6 @@ function TopToolbar({
         }),
       ),
       createElement(ZoomControl, { zoom, onZoomChange, onFitPage }),
-      createElement(ToolbarButton, {
-        icon: Pan03Icon,
-        title: "Pan tool",
-        disabled: true,
-        onClick: () => undefined,
-        compact: true,
-      }),
     ),
     createElement(
       "div",
@@ -1356,7 +1742,14 @@ function ZoomControl({
   onFitPage: () => void;
 }): ReactElement {
   const [open, setOpen] = useState(false);
+  const [menuFrame, setMenuFrame] = useState<DropdownFrame | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const menuWidth = 196;
+
+  const updateMenuFrame = useCallback(() => {
+    setMenuFrame(measureDropdownFrame(wrapRef.current, menuWidth, "center"));
+  }, []);
+
   const setPreset = (value: number): void => {
     setOpen(false);
     onZoomChange(clampZoom(value));
@@ -1367,6 +1760,8 @@ function ZoomControl({
       return;
     }
 
+    updateMenuFrame();
+
     const handlePointerDown = (event: globalThis.PointerEvent): void => {
       if (wrapRef.current?.contains(event.target as Node)) {
         return;
@@ -1375,10 +1770,18 @@ function ZoomControl({
       setOpen(false);
     };
 
-    document.addEventListener("pointerdown", handlePointerDown);
+    const handleLayoutChange = (): void => updateMenuFrame();
 
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [open]);
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("resize", handleLayoutChange);
+    window.addEventListener("scroll", handleLayoutChange, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("resize", handleLayoutChange);
+      window.removeEventListener("scroll", handleLayoutChange, true);
+    };
+  }, [open, updateMenuFrame]);
 
   return createElement(
     "div",
@@ -1410,7 +1813,12 @@ function ZoomControl({
           type: "button",
           title: "Zoom level",
           "aria-expanded": open,
-          onClick: () => setOpen((value) => !value),
+          onClick: () =>
+            setOpen((value) => {
+              const next = !value;
+              if (next) updateMenuFrame();
+              return next;
+            }),
           style: zoomControlValueStyle,
         },
         createElement("span", null, `${Math.round(zoom * 100)}%`),
@@ -1438,7 +1846,7 @@ function ZoomControl({
     open
       ? createElement(
           "div",
-          { style: zoomDropdownStyle },
+          { style: anchoredDropdownStyle(zoomDropdownStyle, menuFrame) },
           createElement(DropdownItem, {
             label: "Fit page",
             detail: "Scale canvas to viewport",
@@ -1480,15 +1888,23 @@ function ZoomControl({
 function PreviewDropdown({
   onPreview,
 }: {
-  onPreview: () => void;
+  onPreview: (mode: PreviewMode) => void;
 }): ReactElement {
   const [open, setOpen] = useState(false);
+  const [menuFrame, setMenuFrame] = useState<DropdownFrame | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const menuWidth = 248;
+
+  const updateMenuFrame = useCallback(() => {
+    setMenuFrame(measureDropdownFrame(wrapRef.current, menuWidth, "right"));
+  }, []);
 
   useEffect(() => {
     if (!open) {
       return;
     }
+
+    updateMenuFrame();
 
     const handlePointerDown = (event: globalThis.PointerEvent): void => {
       if (wrapRef.current?.contains(event.target as Node)) {
@@ -1498,14 +1914,22 @@ function PreviewDropdown({
       setOpen(false);
     };
 
+    const handleLayoutChange = (): void => updateMenuFrame();
+
     document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("resize", handleLayoutChange);
+    window.addEventListener("scroll", handleLayoutChange, true);
 
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [open]);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("resize", handleLayoutChange);
+      window.removeEventListener("scroll", handleLayoutChange, true);
+    };
+  }, [open, updateMenuFrame]);
 
-  const runPreview = (): void => {
+  const runPreview = (mode: PreviewMode): void => {
     setOpen(false);
-    onPreview();
+    onPreview(mode);
   };
 
   return createElement(
@@ -1517,7 +1941,12 @@ function PreviewDropdown({
         type: "button",
         title: "Preview options",
         "aria-expanded": open,
-        onClick: () => setOpen((value) => !value),
+        onClick: () =>
+          setOpen((value) => {
+            const next = !value;
+            if (next) updateMenuFrame();
+            return next;
+          }),
         style: previewButtonStyle,
       },
       createElement(ToolIcon, {
@@ -1535,33 +1964,21 @@ function PreviewDropdown({
     open
       ? createElement(
           "div",
-          { style: toolbarDropdownStyle },
+          { style: anchoredDropdownStyle(toolbarDropdownStyle, menuFrame) },
           createElement(DropdownItem, {
-            label: "Preview with sample data",
-            detail: "Open rendered preview",
-            onClick: runPreview,
+            label: "Preview (sample data)",
+            detail: "Open the rendered preview",
+            onClick: () => runPreview("sample"),
           }),
           createElement(DropdownItem, {
             label: "Preview with large data",
-            detail: "Stress repeat pagination",
-            onClick: runPreview,
+            detail: "Fill repeats to test pagination",
+            onClick: () => runPreview("large"),
           }),
           createElement(DropdownItem, {
             label: "Export PDF",
-            detail: "Preview first, export later",
-            disabled: true,
-            onClick: () => undefined,
-          }),
-          createElement(DropdownItem, {
-            label: "Export PNG / HTML",
-            detail: "Coming soon",
-            disabled: true,
-            onClick: () => undefined,
-          }),
-          createElement(DropdownItem, {
-            label: "Render diagnostics",
-            detail: "Use preview debug output",
-            onClick: runPreview,
+            detail: "Open preview and print to PDF",
+            onClick: () => runPreview("export"),
           }),
         )
       : null,
@@ -1579,6 +1996,8 @@ function DropdownItem({
   disabled?: boolean;
   onClick: () => void;
 }): ReactElement {
+  const [hovered, setHovered] = useState(false);
+
   return createElement(
     "button",
     {
@@ -1586,8 +2005,11 @@ function DropdownItem({
       title: `${label} - ${detail}`,
       disabled,
       onClick,
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
       style: {
         ...dropdownItemStyle,
+        background: !disabled && hovered ? "#EEF0FB" : "transparent",
         opacity: disabled ? 0.48 : 1,
         cursor: disabled ? "not-allowed" : "pointer",
       },
@@ -1609,6 +2031,7 @@ function EditorCanvas({
   horizontalGuides,
   boardRef,
   onNodePointerDown,
+  onStartResize,
   onPagePointerDown,
   onBindingDrop,
   onStartGuideDrag,
@@ -1626,6 +2049,10 @@ function EditorCanvas({
   onNodePointerDown: (
     event: PointerEvent<HTMLElement>,
     node: EditorRenderNode,
+  ) => void;
+  onStartResize: (
+    event: PointerEvent<HTMLElement>,
+    handle: ResizeHandle,
   ) => void;
   onPagePointerDown: (event: PointerEvent<HTMLDivElement>) => void;
   onBindingDrop: (event: DragEvent<HTMLDivElement>, fieldPath: string) => void;
@@ -1753,6 +2180,8 @@ function EditorCanvas({
             nodes: page.nodes.filter((node) =>
               selectedNodeIds.includes(node.sourceNodeId),
             ),
+            zoom,
+            onStartResize,
           }),
         ),
       ),
@@ -1896,16 +2325,49 @@ function BleedOverlay({
   });
 }
 
+const RESIZE_HANDLES: ResizeHandle[] = [
+  "nw",
+  "n",
+  "ne",
+  "e",
+  "se",
+  "s",
+  "sw",
+  "w",
+];
+
+const RESIZE_HANDLE_CURSOR: Record<ResizeHandle, string> = {
+  nw: "nwse-resize",
+  n: "ns-resize",
+  ne: "nesw-resize",
+  e: "ew-resize",
+  se: "nwse-resize",
+  s: "ns-resize",
+  sw: "nesw-resize",
+  w: "ew-resize",
+};
+
 function SelectionOverlay({
   nodes,
+  zoom,
+  onStartResize,
 }: {
   nodes: EditorRenderNode[];
+  zoom: number;
+  onStartResize: (
+    event: PointerEvent<HTMLElement>,
+    handle: ResizeHandle,
+  ) => void;
 }): ReactElement | null {
   if (nodes.length === 0) {
     return null;
   }
 
   const bounds = getBounds(nodes.map((node) => node.frame));
+  // Resize is single-node only for now; multi-select shows a static bounding box.
+  const resizable = nodes.length === 1;
+  // Counter-scale the handles so they keep a constant on-screen size at any zoom.
+  const handleScale = zoom > 0 ? 1 / zoom : 1;
 
   return createElement(
     "div",
@@ -1922,17 +2384,48 @@ function SelectionOverlay({
         zIndex: 20,
       },
     },
-    ["nw", "ne", "sw", "se"].map((corner) =>
-      createElement("span", {
-        key: corner,
-        style: {
-          ...selectionHandleStyle,
-          ...(corner.includes("n") ? { top: -4 } : { bottom: -4 }),
-          ...(corner.includes("w") ? { left: -4 } : { right: -4 }),
-        },
-      }),
+    (resizable ? RESIZE_HANDLES : (["nw", "ne", "sw", "se"] as ResizeHandle[])).map(
+      (handle) =>
+        createElement("span", {
+          key: handle,
+          "data-templara-resize-handle": handle,
+          onPointerDown: resizable
+            ? (event: PointerEvent<HTMLElement>) => onStartResize(event, handle)
+            : undefined,
+          style: {
+            ...selectionHandleStyle,
+            ...resizeHandlePlacement(handle),
+            transform: `scale(${handleScale})`,
+            pointerEvents: resizable ? "auto" : "none",
+            cursor: resizable ? RESIZE_HANDLE_CURSOR[handle] : undefined,
+          },
+        }),
     ),
   );
+}
+
+function resizeHandlePlacement(handle: ResizeHandle): CSSProperties {
+  const style: CSSProperties = {};
+
+  if (handle.includes("n")) {
+    style.top = -4;
+  } else if (handle.includes("s")) {
+    style.bottom = -4;
+  } else {
+    style.top = "50%";
+    style.marginTop = -4;
+  }
+
+  if (handle.includes("w")) {
+    style.left = -4;
+  } else if (handle.includes("e")) {
+    style.right = -4;
+  } else {
+    style.left = "50%";
+    style.marginLeft = -4;
+  }
+
+  return style;
 }
 
 function EditorNodeView({
@@ -2204,17 +2697,63 @@ function NodeLayerList({
   items,
   activePageId,
   selectedNodeIds,
+  collapsedIds,
   onSelectPage,
   onSelect,
+  onToggleCollapse,
+  onMoveNode,
 }: {
   pages: DocumentTemplate["pages"];
   items: EditorNodeItem[];
   activePageId: string;
   selectedNodeIds: string[];
+  collapsedIds: ReadonlySet<string>;
   onSelectPage: (pageId: string) => void;
   onSelect: (event: MouseEvent<HTMLElement>, nodeId: string) => void;
+  onToggleCollapse: (nodeId: string) => void;
+  onMoveNode: (nodeId: string, target: LayerMoveTarget) => void;
 }): ReactElement {
-  const rows = buildLayerTreeRows(pages, activePageId, items);
+  const rows = buildLayerTreeRows(pages, activePageId, items, collapsedIds);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{
+    key: string;
+    intent: LayerDropIntent;
+  } | null>(null);
+
+  // Mirror the drag state into refs so the drop handler always reads the latest
+  // values. In a synthetic drag (dragover + drop in the same tick) React may not
+  // have flushed the setState before onDrop runs, which would drop the move.
+  const draggingIdRef = useRef<string | null>(null);
+  const dropTargetRef = useRef<{ key: string; intent: LayerDropIntent } | null>(
+    null,
+  );
+
+  const finishDrag = (): void => {
+    draggingIdRef.current = null;
+    dropTargetRef.current = null;
+    setDraggingId(null);
+    setDropTarget(null);
+  };
+
+  const handleDrop = (row: LayerTreeRow): void => {
+    const activeDragId = draggingIdRef.current;
+    const activeDropTarget = dropTargetRef.current;
+
+    if (
+      activeDragId &&
+      activeDropTarget &&
+      activeDropTarget.key === row.key &&
+      row.nodeId &&
+      row.nodeId !== activeDragId
+    ) {
+      onMoveNode(activeDragId, {
+        referenceId: row.nodeId,
+        position: activeDropTarget.intent,
+      });
+    }
+
+    finishDrag();
+  };
 
   return createElement(
     "section",
@@ -2239,8 +2778,50 @@ function NodeLayerList({
           selected: row.nodeId
             ? selectedNodeIds.includes(row.nodeId)
             : row.pageId === activePageId && row.kind === "page",
+          dragging: Boolean(row.nodeId) && draggingId === row.nodeId,
+          dropIntent:
+            dropTarget && dropTarget.key === row.key ? dropTarget.intent : null,
           onSelect,
           onSelectPage,
+          onToggleCollapse,
+          onDragStart: () => {
+            if (row.nodeId) {
+              draggingIdRef.current = row.nodeId;
+              setDraggingId(row.nodeId);
+            }
+          },
+          onDragOver: (event: DragEvent<HTMLElement>) => {
+            const activeDragId = draggingIdRef.current;
+            if (!activeDragId || !row.nodeId || row.nodeId === activeDragId) {
+              return;
+            }
+
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+
+            const rect = event.currentTarget.getBoundingClientRect();
+            const ratio =
+              rect.height > 0
+                ? (event.clientY - rect.top) / rect.height
+                : 0.5;
+            let intent: LayerDropIntent;
+            if (row.isContainer && ratio > 0.32 && ratio < 0.68) {
+              intent = "inside";
+            } else if (ratio < 0.5) {
+              intent = "before";
+            } else {
+              intent = "after";
+            }
+
+            dropTargetRef.current = { key: row.key, intent };
+            setDropTarget((prev) =>
+              prev && prev.key === row.key && prev.intent === intent
+                ? prev
+                : { key: row.key, intent },
+            );
+          },
+          onDrop: () => handleDrop(row),
+          onDragEnd: finishDrag,
         }),
       ),
     ),
@@ -2250,19 +2831,75 @@ function NodeLayerList({
 function LayerTreeRowView({
   row,
   selected,
+  dragging,
+  dropIntent,
   onSelect,
   onSelectPage,
+  onToggleCollapse,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }: {
   row: LayerTreeRow;
   selected: boolean;
+  dragging: boolean;
+  dropIntent: LayerDropIntent | null;
   onSelect: (event: MouseEvent<HTMLElement>, nodeId: string) => void;
   onSelectPage: (pageId: string) => void;
+  onToggleCollapse: (nodeId: string) => void;
+  onDragStart: () => void;
+  onDragOver: (event: DragEvent<HTMLElement>) => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
 }): ReactElement {
+  const showCaret = Boolean(row.isContainer && row.hasChildren);
+  const caret = showCaret
+    ? createElement(
+        "span",
+        {
+          role: "button",
+          title: row.collapsed ? "Expand" : "Collapse",
+          onClick: (event: MouseEvent<HTMLElement>) => {
+            event.stopPropagation();
+            if (row.nodeId) {
+              onToggleCollapse(row.nodeId);
+            }
+          },
+          style: layerTreeCaretButtonStyle,
+        },
+        createElement(ToolIcon, {
+          icon: row.collapsed ? ChevronRightSharpIcon : ChevronDownSharpIcon,
+          style: layerTreeCaretIconStyle,
+          size: 16,
+        }),
+      )
+    : createElement("span", { style: layerTreeCaretStyle });
+
+  const background =
+    dropIntent === "inside"
+      ? UI_DROP_INSIDE_BG
+      : selected
+        ? UI_SELECTION_BG
+        : "transparent";
+  const boxShadow =
+    dropIntent === "inside"
+      ? UI_DROP_INSIDE_RING
+      : selected
+        ? UI_SELECTION_RING
+        : "none";
+
   return createElement(
-    "button",
+    "div",
     {
-      type: "button",
-      onClick: (event) => {
+      role: "button",
+      draggable: Boolean(row.nodeId),
+      title: row.label,
+      onDragStart,
+      onDragOver,
+      onDrop,
+      onDragEnd,
+      onClick: (event: MouseEvent<HTMLElement>) => {
         if (row.nodeId) {
           onSelect(event, row.nodeId);
           return;
@@ -2275,42 +2912,22 @@ function LayerTreeRowView({
       style: {
         ...layerTreeRowStyle,
         paddingLeft: 8 + row.depth * 18,
-        background: selected ? UI_SELECTION_BG : "transparent",
-        boxShadow: selected ? UI_SELECTION_RING : "none",
-        fontWeight: row.kind === "node" ? 500 : 700,
+        background,
+        boxShadow,
+        fontWeight: row.kind === "node" ? 500 : 600,
+        opacity: dragging ? 0.45 : 1,
       },
     },
-    row.kind === "node"
-      ? createElement("span", { style: layerTreeCaretStyle })
-      : createElement(SidebarIcon, {
-          src: sidebarIcons.caret,
-          alt: "",
-          style: layerTreeCaretStyle,
-        }),
-    createElement(SidebarIcon, {
-      src: row.iconSrc,
-      alt: "",
-      style: layerTreeIconStyle,
-    }),
+    dropIntent === "before"
+      ? createElement("span", { style: layerDropLineTopStyle })
+      : null,
+    dropIntent === "after"
+      ? createElement("span", { style: layerDropLineBottomStyle })
+      : null,
+    caret,
+    createElement(LayerNodeIcon, { type: row.type, style: layerTreeIconStyle }),
     createElement("span", { style: layerTreeLabelStyle }, row.label),
   );
-}
-
-function SidebarIcon({
-  src,
-  alt,
-  style,
-}: {
-  src: string;
-  alt: string;
-  style: CSSProperties;
-}): ReactElement {
-  return createElement("img", {
-    src,
-    alt,
-    "aria-hidden": alt === "" ? true : undefined,
-    style,
-  });
 }
 
 function ToolIcon({
@@ -2334,13 +2951,132 @@ function ToolIcon({
   );
 }
 
+// Inline glyph shapes lifted from the studio icon set (originally hard-coded
+// #D0D5DD) and re-authored to paint with `currentColor`, so they inherit the
+// row's text/selection color instead of rendering faint gray.
+function GlyphIcon({
+  paths,
+  variant,
+  style,
+  size = 15,
+}: {
+  paths: string[];
+  variant: "fill" | "stroke";
+  style: CSSProperties;
+  size?: number;
+}): ReactElement {
+  return createElement(
+    "span",
+    { style, "aria-hidden": true },
+    createElement(
+      "svg",
+      {
+        width: size,
+        height: size,
+        viewBox: "0 0 16 16",
+        fill: "none",
+        xmlns: "http://www.w3.org/2000/svg",
+        style: { display: "block" },
+      },
+      ...paths.map((d, index) =>
+        createElement("path", {
+          key: index,
+          d,
+          ...(variant === "fill"
+            ? { fill: "currentColor" }
+            : {
+                stroke: "currentColor",
+                strokeWidth: 1.33333,
+                strokeLinecap: "round" as const,
+                strokeLinejoin: "round" as const,
+              }),
+        }),
+      ),
+    ),
+  );
+}
+
+const LAYER_GLYPH_PATHS: Record<
+  string,
+  { variant: "fill" | "stroke"; paths: string[] }
+> = {
+  text: {
+    variant: "fill",
+    paths: [
+      "M10.7812 13.5V7.5H8.4375V6.5H14.0625V7.5H11.7188V13.5H10.7812Z",
+      "M5.15625 13.5V4H0.9375V3H10.3125V4H6.09375V13.5H5.15625Z",
+    ],
+  },
+  frame: {
+    variant: "stroke",
+    paths: [
+      "M2 2.66675L2 13.3334C2 14.0698 2.59695 14.6667 3.33333 14.6667H12.6667C13.403 14.6667 14 14.0698 14 13.3334V2.66675C14 1.93037 13.403 1.33341 12.6667 1.33341H3.33333C2.59695 1.33341 2 1.93037 2 2.66675Z",
+      "M2 8H14",
+    ],
+  },
+  table: {
+    variant: "stroke",
+    paths: [
+      "M13.3333 2H2.66659C1.93021 2 1.33325 2.59695 1.33325 3.33333V12.6667C1.33325 13.403 1.93021 14 2.66659 14H13.3333C14.0696 14 14.6666 13.403 14.6666 12.6667V3.33333C14.6666 2.59695 14.0696 2 13.3333 2Z",
+      "M8 2V14",
+    ],
+  },
+};
+
+// Node type -> crisp Hugeicon for the types that read better as line icons.
+const LAYER_TYPE_ICONS: Record<string, IconSvgElement> = {
+  page: SquareIcon,
+  image: Image01Icon,
+  barcode: BarcodeIcon,
+  qr: QrCodeIcon,
+  repeat: RepeatIcon,
+  conditional: ThirdBracketIcon,
+  signature: SignatureIcon,
+  shape: CircleIcon,
+  line: MinusSignIcon,
+};
+
+// Alternate inline asset glyphs with Hugeicons so each node type gets an icon
+// that actually communicates what it is.
+const LAYER_GLYPH_TYPES: Record<string, keyof typeof LAYER_GLYPH_PATHS> = {
+  text: "text",
+  group: "frame",
+  section: "frame",
+  stack: "frame",
+  frame: "frame",
+  flowRegion: "frame",
+  grid: "table",
+  table: "table",
+};
+
+function LayerNodeIcon({
+  type,
+  style,
+}: {
+  type?: string;
+  style: CSSProperties;
+}): ReactElement {
+  const glyphKey = type ? LAYER_GLYPH_TYPES[type] : undefined;
+  if (glyphKey) {
+    const glyph = LAYER_GLYPH_PATHS[glyphKey];
+    return createElement(GlyphIcon, {
+      paths: glyph.paths,
+      variant: glyph.variant,
+      style,
+    });
+  }
+
+  const icon = (type && LAYER_TYPE_ICONS[type]) || FrameIcon;
+  return createElement(ToolIcon, { icon, style, size: 15 });
+}
+
 function buildLayerTreeRows(
   pages: DocumentTemplate["pages"],
   activePageId: string,
   items: EditorNodeItem[],
+  collapsedIds: ReadonlySet<string>,
 ): LayerTreeRow[] {
   const activePage = pages.find((page) => page.id === activePageId) ?? pages[0];
-  const itemById = new Map(items.map((item) => [item.id, item]));
   const rows: LayerTreeRow[] = [];
 
   if (activePage) {
@@ -2350,159 +3086,72 @@ function buildLayerTreeRows(
       depth: 0,
       kind: "page",
       iconSrc: sidebarIcons.page,
+      type: "page",
       pageId: activePage.id,
+      isContainer: true,
+      hasChildren: items.length > 0,
     });
   }
 
-  const hasShipmentBolNodes =
-    itemById.has("handling-units-repeat") && itemById.has("bol-title");
-  const hasInvoiceNodes =
-    itemById.has("invoice-items-repeat") && itemById.has("invoice-title");
+  // `items` is a pre-order DFS of the real document structure, annotated with
+  // depth. We rebuild parent links from a depth-keyed ancestor stack, which also
+  // lets us hide descendants of collapsed containers.
+  const ancestors: { id: string; depth: number }[] = [];
 
-  if (!hasShipmentBolNodes && !hasInvoiceNodes) {
-    return rows.concat(buildGenericLayerRows(items));
-  }
+  items.forEach((item, index) => {
+    while (
+      ancestors.length > 0 &&
+      ancestors[ancestors.length - 1].depth >= item.depth
+    ) {
+      ancestors.pop();
+    }
 
-  const addSection = (key: string, label: string, depth: number): void => {
-    rows.push({
-      key,
-      label,
-      depth,
-      kind: "section",
-      iconSrc: sidebarIcons.frame,
-    });
-  };
-  const addNode = (
-    nodeId: string,
-    label: string,
-    depth: number,
-    iconSrc?: string,
-  ): void => {
-    if (!itemById.has(nodeId)) {
+    const parentId =
+      ancestors.length > 0 ? ancestors[ancestors.length - 1].id : undefined;
+    const next = items[index + 1];
+    const hasChildren = Boolean(next && next.depth > item.depth);
+    const isContainer = hasChildren || CONTAINER_NODE_TYPES.has(item.type);
+    const hiddenByCollapse = ancestors.some((ancestor) =>
+      collapsedIds.has(ancestor.id),
+    );
+
+    if (isContainer) {
+      ancestors.push({ id: item.id, depth: item.depth });
+    }
+
+    if (hiddenByCollapse) {
       return;
     }
 
     rows.push({
-      key: `node-${nodeId}-${rows.length}`,
-      label,
-      depth,
+      key: item.path,
+      label: item.label,
+      depth: item.depth + 1,
       kind: "node",
-      iconSrc: iconSrc ?? nodeIcon(itemById.get(nodeId)?.type),
-      nodeId,
+      iconSrc: nodeIcon(item.type),
+      type: item.type,
+      nodeId: item.id,
+      parentId,
+      isContainer,
+      hasChildren,
+      collapsed: collapsedIds.has(item.id),
     });
-  };
-
-  if (hasInvoiceNodes) {
-    addSection("section-invoice-header", "Header", 1);
-    addNode("invoice-business-name", "Business Name", 2, sidebarIcons.text);
-    addNode("invoice-title", "Title (Invoice)", 2, sidebarIcons.text);
-    addNode("invoice-number", "Invoice Number", 2, sidebarIcons.text);
-    addNode("invoice-number-barcode", "Barcode", 2, sidebarIcons.barcode);
-
-    addSection("section-invoice-parties", "Parties", 1);
-    addNode("bill-to-card", "Bill To", 2, sidebarIcons.frame);
-    addNode("customer-name", "Customer", 2, sidebarIcons.text);
-    addNode("ship-to-card", "Ship To", 2, sidebarIcons.frame);
-    addNode("ship-to-name", "Delivery Name", 2, sidebarIcons.text);
-    addNode("invoice-meta-card", "Invoice Details", 2, sidebarIcons.frame);
-
-    addSection("section-invoice-items", "Invoice Items", 1);
-    addNode("invoice-items-header", "Table Header", 2, sidebarIcons.table);
-    addNode("invoice-items-repeat", "Repeat: Items", 2, sidebarIcons.layout);
-    rows.push({
-      key: "section-invoice-row-template",
-      label: "Row Template",
-      depth: 3,
-      kind: "section",
-      iconSrc: sidebarIcons.frame,
-    });
-    addNode("invoice-item-description", "Description", 4, sidebarIcons.text);
-    addNode("invoice-item-qty", "Quantity", 4, sidebarIcons.text);
-    addNode("invoice-item-rate", "Unit Price", 4, sidebarIcons.text);
-    addNode("invoice-item-total", "Line Total", 4, sidebarIcons.text);
-
-    addSection("section-invoice-summary", "Summary", 1);
-    addNode("invoice-notes-box", "Notes Box", 2, sidebarIcons.frame);
-    addNode("invoice-totals-box", "Totals Box", 2, sidebarIcons.frame);
-    addNode("invoice-subtotal", "Subtotal", 2, sidebarIcons.text);
-    addNode("invoice-tax", "Tax", 2, sidebarIcons.text);
-    addNode("invoice-balance", "Balance Due", 2, sidebarIcons.text);
-
-    addSection("section-invoice-footer", "Footer", 1);
-    addNode("payment-qr", "Payment QR", 2, sidebarIcons.qr);
-    addNode("payment-url", "Payment URL", 2, sidebarIcons.text);
-    addNode("thank-you", "Thank You", 2, sidebarIcons.text);
-
-    return rows;
-  }
-
-  addSection("section-header", "Header", 1);
-  addNode("business-name", "Business Name", 2, sidebarIcons.text);
-  addNode("bol-title", "Title (BOL)", 2, sidebarIcons.text);
-  addNode("bol-number-barcode", "Barcode", 2, sidebarIcons.barcode);
-  addNode("tracking-qr", "Tracking QR", 2, sidebarIcons.qr);
-
-  addSection("section-shipment-info", "Shipment Info", 1);
-  addNode("detail-strip", "BOL Details", 2, sidebarIcons.frame);
-  addNode("bol-number", "BOL Number", 2, sidebarIcons.text);
-  addNode("pro-value", "PRO Number", 2, sidebarIcons.text);
-  addNode("po-value", "PO Number", 2, sidebarIcons.text);
-
-  addSection("section-parties", "Parties", 1);
-  addNode("shipper-card", "Shipper", 2, sidebarIcons.frame);
-  addNode("recipient-card", "Recipient", 2, sidebarIcons.frame);
-  addNode("delivery-card", "Delivery Address", 2, sidebarIcons.frame);
-
-  addSection("section-handling-units", "Handling Units Table", 1);
-  addNode("freight-header", "Table Header", 2, sidebarIcons.table);
-  addNode("handling-units-repeat", "Repeat: Items", 2, sidebarIcons.layout);
-  rows.push({
-    key: "section-row-template",
-    label: "Row Template",
-    depth: 3,
-    kind: "section",
-    iconSrc: sidebarIcons.frame,
   });
-  addNode("unit-pieces", "Pieces", 4, sidebarIcons.text);
-  addNode("unit-type", "Type", 4, sidebarIcons.text);
-  addNode("unit-description", "Description", 4, sidebarIcons.text);
-  addNode("unit-weight", "Weight", 4, sidebarIcons.text);
-  addNode("unit-class", "Class", 4, sidebarIcons.text);
-  addNode("unit-nmfc", "NMFC", 4, sidebarIcons.text);
-  addNode("unit-hazmat", "Hazmat", 4, sidebarIcons.text);
-
-  addSection("section-summary", "Summary", 1);
-  addNode("instructions-box", "Instructions Box", 2, sidebarIcons.frame);
-  addNode("instructions-label", "Instructions Label", 2, sidebarIcons.text);
-  addNode("instructions", "Instructions", 2, sidebarIcons.text);
-  addNode("totals-box", "Totals Box", 2, sidebarIcons.frame);
-  addNode("total-pieces-label", "Total Pieces Label", 2, sidebarIcons.text);
-  addNode("total-pieces", "Total Pieces", 2, sidebarIcons.text);
-  addNode("total-weight-label", "Total Weight Label", 2, sidebarIcons.text);
-  addNode("total-weight", "Total Weight", 2, sidebarIcons.text);
-
-  addSection("section-signatures", "Signatures", 1);
-  addNode("shipper-sign-label", "Shipper Signature", 2, sidebarIcons.text);
-  addNode("carrier-sign-label", "Carrier Signature", 2, sidebarIcons.text);
-  addNode("legal-note", "Terms", 2, sidebarIcons.text);
-
-  addSection("section-footer", "Footer", 1);
-  addNode("shipment-pdf417", "PDF417 Barcode", 2, sidebarIcons.barcode);
-  addNode("tracking-qr", "QR Code", 2, sidebarIcons.qr);
 
   return rows;
 }
 
-function buildGenericLayerRows(items: EditorNodeItem[]): LayerTreeRow[] {
-  return items.map((item) => ({
-    key: item.path,
-    label: item.label,
-    depth: item.depth + 1,
-    kind: "node",
-    iconSrc: nodeIcon(item.type),
-    nodeId: item.id,
-  }));
-}
+const CONTAINER_NODE_TYPES = new Set([
+  "section",
+  "group",
+  "repeat",
+  "grid",
+  "stack",
+  "flowRegion",
+  "frame",
+  "conditional",
+  "shape",
+]);
 
 function pageDisplayName(
   pages: DocumentTemplate["pages"],
@@ -2923,12 +3572,86 @@ function DataActionButton({
 }
 
 function PreviewOverlay({
-  document,
+  document: renderResult,
+  title,
+  autoExport,
   onClose,
 }: {
   document: ReturnType<typeof renderDocument>;
+  title: string;
+  autoExport?: boolean;
   onClose: () => void;
 }): ReactElement {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const autoExportFired = useRef(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState<{
+    tone: "info" | "error";
+    text: string;
+  } | null>(null);
+  const preflight = useMemo(
+    () => collectExportDiagnostics(renderResult),
+    [renderResult],
+  );
+  const fontCss = useMemo(
+    () => buildExportFontCss(renderResult),
+    [renderResult],
+  );
+
+  const handleExport = useCallback(async () => {
+    const container = scrollRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    const pageElements = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-templara-page-id]"),
+    );
+    const pageSizes = renderResult.pages.map((page) => ({
+      width: page.width,
+      height: page.height,
+    }));
+
+    setExporting(true);
+    setExportMessage(null);
+
+    try {
+      const result = await exportPreviewToPdf(pageElements, pageSizes, {
+        title,
+        fontCss,
+      });
+
+      if (result.status === "printed") {
+        setExportMessage({
+          tone: "info",
+          text: 'Opened the print dialog \u2014 choose "Save as PDF" to download.',
+        });
+      } else {
+        setExportMessage({
+          tone: "error",
+          text: result.message ?? "Export could not start.",
+        });
+      }
+    } finally {
+      setExporting(false);
+    }
+  }, [fontCss, renderResult.pages, title]);
+
+  useEffect(() => {
+    if (!autoExport || autoExportFired.current || !preflight.ok) {
+      return;
+    }
+
+    autoExportFired.current = true;
+    // Defer one frame so the preview DOM (and its page elements) exist.
+    const timer = window.setTimeout(() => {
+      void handleExport();
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, [autoExport, handleExport, preflight.ok]);
+
   return createElement(
     "div",
     { style: previewOverlayStyle },
@@ -2936,19 +3659,136 @@ function PreviewOverlay({
       "header",
       { style: previewToolbarStyle },
       createElement("strong", null, "Rendered Preview"),
-      createElement(ToolbarButton, {
-        label: "Close",
-        title: "Close preview",
-        onClick: onClose,
-      }),
+      createElement(
+        "div",
+        { style: previewToolbarActionsStyle },
+        createElement(ExportDiagnosticsBadge, { preflight }),
+        createElement(ToolbarButton, {
+          label: exporting ? "Preparing\u2026" : "Export PDF",
+          title: preflight.ok
+            ? "Export to PDF via the browser print dialog"
+            : "Resolve blocking issues before exporting",
+          variant: "primary",
+          disabled: exporting || !preflight.ok,
+          onClick: () => {
+            void handleExport();
+          },
+        }),
+        createElement(ToolbarButton, {
+          label: "Close",
+          title: "Close preview",
+          onClick: onClose,
+        }),
+      ),
     ),
     createElement(
       "div",
-      { style: previewScrollStyle },
-      createElement(DocumentPreview, {
-        document,
-        scale: 0.86,
-      }),
+      { style: previewContentStyle },
+      exportMessage
+        ? createElement(
+            "div",
+            {
+              style: {
+                ...exportMessageStyle,
+                color: exportMessage.tone === "error" ? "#991b1b" : "#1e3a8a",
+                background:
+                  exportMessage.tone === "error" ? "#fef2f2" : "#eff6ff",
+              },
+            },
+            exportMessage.text,
+          )
+        : null,
+      preflight.diagnostics.length > 0
+        ? createElement(ExportDiagnosticsPanel, { preflight })
+        : null,
+      createElement(
+        "div",
+        { ref: scrollRef, style: previewScrollStyle },
+        createElement(DocumentPreview, {
+          document: renderResult,
+          scale: 0.86,
+        }),
+      ),
+    ),
+  );
+}
+
+function ExportDiagnosticsBadge({
+  preflight,
+}: {
+  preflight: ExportPreflight;
+}): ReactElement {
+  const label =
+    preflight.errorCount > 0
+      ? `${preflight.errorCount} blocking`
+      : preflight.warningCount > 0
+        ? `${preflight.warningCount} warning${preflight.warningCount === 1 ? "" : "s"}`
+        : "Ready to export";
+  const tone =
+    preflight.errorCount > 0
+      ? { color: "#991b1b", background: "#fef2f2", border: "#fca5a5" }
+      : preflight.warningCount > 0
+        ? { color: "#92400e", background: "#fffbeb", border: "#fcd34d" }
+        : { color: "#166534", background: "#f0fdf4", border: "#86efac" };
+
+  return createElement(
+    "span",
+    {
+      style: {
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "2px 10px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 600,
+        color: tone.color,
+        background: tone.background,
+        border: `1px solid ${tone.border}`,
+      },
+    },
+    `${preflight.pageCount} page${preflight.pageCount === 1 ? "" : "s"} \u00b7 ${label}`,
+  );
+}
+
+function ExportDiagnosticsPanel({
+  preflight,
+}: {
+  preflight: ExportPreflight;
+}): ReactElement {
+  return createElement(
+    "div",
+    { style: exportDiagnosticsPanelStyle },
+    preflight.diagnostics.map((diagnostic, index) =>
+      createElement(
+        "div",
+        {
+          key: `${diagnostic.code}-${diagnostic.nodeId ?? index}`,
+          style: exportDiagnosticRowStyle,
+        },
+        createElement(
+          "span",
+          {
+            style: {
+              ...exportDiagnosticDotStyle,
+              background:
+                diagnostic.severity === "error"
+                  ? "#dc2626"
+                  : diagnostic.severity === "warning"
+                    ? "#d97706"
+                    : "#2563eb",
+            },
+          },
+        ),
+        createElement("span", { style: { flex: 1 } }, diagnostic.message),
+        diagnostic.nodeId
+          ? createElement(
+              "code",
+              { style: exportDiagnosticNodeStyle },
+              diagnostic.nodeId,
+            )
+          : null,
+      ),
     ),
   );
 }
@@ -3347,7 +4187,7 @@ function createNodeForTool(
     const headerStyle = {
       fontFamily: "Geist",
       fontSize: 10,
-      fontWeight: 800,
+      fontWeight: 600,
       lineHeight: 1.2,
       color: "#111827",
     };
@@ -3508,7 +4348,7 @@ function createNodeForTool(
           style: {
             fontFamily: "Geist",
             fontSize: 10,
-            fontWeight: 700,
+            fontWeight: 600,
             lineHeight: 1.2,
             color: "#111827",
           },
@@ -3521,7 +4361,7 @@ function createNodeForTool(
           style: {
             fontFamily: "Geist",
             fontSize: 9,
-            fontWeight: 700,
+            fontWeight: 600,
             lineHeight: 1.2,
             color: "#111827",
           },
@@ -3677,7 +4517,14 @@ function childCollectionsForNode(node: EditableNode): EditableNode[][] {
   }
 
   if (node.type === "repeat") {
-    return node.emptyState ? [node.children, node.emptyState] : [node.children];
+    const collections: EditableNode[][] = [node.children];
+    if (node.header) {
+      collections.push(node.header);
+    }
+    if (node.emptyState) {
+      collections.push(node.emptyState);
+    }
+    return collections;
   }
 
   if (node.type === "conditional") {
@@ -3738,6 +4585,10 @@ function collectNodeIds(nodes: EditableNode[], ids: Set<string>): void {
     if (node.type === "repeat") {
       collectNodeIds(node.children, ids);
 
+      if (node.header) {
+        collectNodeIds(node.header, ids);
+      }
+
       if (node.emptyState) {
         collectNodeIds(node.emptyState, ids);
       }
@@ -3755,6 +4606,48 @@ function collectNodeIds(nodes: EditableNode[], ids: Set<string>): void {
 
 function clampZoom(value: number): number {
   return Math.min(2, Math.max(0.25, Math.round(value * 100) / 100));
+}
+
+function measureDropdownFrame(
+  anchor: HTMLElement | null,
+  width: number,
+  align: "center" | "right",
+): DropdownFrame | null {
+  if (!anchor || typeof window === "undefined") {
+    return null;
+  }
+
+  const rect = anchor.getBoundingClientRect();
+  const viewportMargin = 8;
+  const preferredLeft =
+    align === "center" ? rect.left + rect.width / 2 - width / 2 : rect.right - width;
+  const maxLeft = Math.max(viewportMargin, window.innerWidth - width - viewportMargin);
+
+  return {
+    top: rect.bottom + 8,
+    left: Math.min(maxLeft, Math.max(viewportMargin, preferredLeft)),
+    width,
+  };
+}
+
+function anchoredDropdownStyle(
+  base: CSSProperties,
+  frame: DropdownFrame | null,
+): CSSProperties {
+  if (!frame) {
+    return base;
+  }
+
+  return {
+    ...base,
+    position: "fixed",
+    top: frame.top,
+    right: "auto",
+    left: frame.left,
+    width: frame.width,
+    transform: "none",
+    zIndex: 1000,
+  };
 }
 
 function roundFrameValue(value: number): number {
@@ -3849,16 +4742,27 @@ const toolRailStyle: CSSProperties = {
 };
 
 const toolButtonStyle: CSSProperties = {
-  width: 32,
-  height: 32,
-  display: "grid",
-  placeItems: "center",
-  padding: 0,
+  width: 52,
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 3,
+  padding: "5px 2px",
   border: "1px solid transparent",
-  borderRadius: 6,
+  borderRadius: 8,
   background: "transparent",
   color: "#111827",
   cursor: "pointer",
+};
+
+const railLabelStyle: CSSProperties = {
+  fontSize: 9,
+  lineHeight: 1,
+  fontWeight: 500,
+  letterSpacing: "0.01em",
+  textAlign: "center",
+  color: "inherit",
 };
 
 const railIconStyle: CSSProperties = {
@@ -3870,7 +4774,7 @@ const railIconStyle: CSSProperties = {
 
 const toolTooltipStyle: CSSProperties = {
   position: "absolute",
-  left: 42,
+  left: 58,
   top: "50%",
   zIndex: 60,
   transform: "translateY(-50%)",
@@ -3880,7 +4784,7 @@ const toolTooltipStyle: CSSProperties = {
   background: "#111827",
   color: "#ffffff",
   boxShadow: "0 10px 24px rgba(15, 23, 42, 0.18)",
-  font: `700 11px/1 ${UI_FONT_FAMILY}`,
+  font: `600 11px/1 ${UI_FONT_FAMILY}`,
   whiteSpace: "nowrap",
   pointerEvents: "none",
 };
@@ -3890,7 +4794,7 @@ const toolSectionLabelStyle: CSSProperties = {
   marginBottom: 6,
   color: "#64748b",
   fontSize: 10,
-  fontWeight: 800,
+  fontWeight: 600,
   textAlign: "left",
 };
 
@@ -3962,7 +4866,7 @@ const insertToolLabelStyle: CSSProperties = {
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
   color: "inherit",
-  font: `700 10px/1 ${UI_FONT_FAMILY}`,
+  font: `600 10px/1 ${UI_FONT_FAMILY}`,
   textAlign: "left",
 };
 
@@ -4118,7 +5022,7 @@ const templateTitleStyle: CSSProperties = {
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
   fontSize: 13,
-  fontWeight: 800,
+  fontWeight: 600,
   color: "#111827",
 };
 
@@ -4128,7 +5032,7 @@ const statusPillStyle: CSSProperties = {
   background: "#f1f3f6",
   color: "#667085",
   fontSize: 11,
-  fontWeight: 800,
+  fontWeight: 600,
 };
 
 const toolbarButtonStyle: CSSProperties = {
@@ -4143,7 +5047,7 @@ const toolbarButtonStyle: CSSProperties = {
   borderRadius: 7,
   background: "#ffffff",
   color: "#111827",
-  font: `800 13px/1 ${UI_FONT_FAMILY}`,
+  font: `600 13px/1 ${UI_FONT_FAMILY}`,
   boxShadow: "0 1px 1px rgba(16, 24, 40, 0.02)",
 };
 
@@ -4219,7 +5123,7 @@ const previewButtonStyle: CSSProperties = {
   color: "#111827",
   boxShadow: "0 1px 1px rgba(16, 24, 40, 0.02)",
   cursor: "pointer",
-  font: `850 13px/1 ${UI_FONT_FAMILY}`,
+  font: `600 13px/1 ${UI_FONT_FAMILY}`,
 };
 
 const toolbarDropdownStyle: CSSProperties = {
@@ -4229,12 +5133,13 @@ const toolbarDropdownStyle: CSSProperties = {
   zIndex: 500,
   width: 248,
   display: "grid",
-  gap: 2,
-  padding: 6,
-  border: "1px solid #d8dee8",
-  borderRadius: 8,
+  gap: 1,
+  padding: 5,
+  border: "1px solid #E5E7EB",
+  borderRadius: 10,
   background: "#ffffff",
-  boxShadow: "0 18px 38px rgba(15, 23, 42, 0.16)",
+  boxShadow:
+    "0 12px 32px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.06)",
 };
 
 const zoomDropdownStyle: CSSProperties = {
@@ -4249,23 +5154,25 @@ const dropdownItemStyle: CSSProperties = {
   width: "100%",
   display: "grid",
   gap: 3,
-  padding: "8px 9px",
+  padding: "8px 10px",
   border: "1px solid transparent",
-  borderRadius: 6,
+  borderRadius: 7,
   background: "transparent",
   color: "#111827",
   textAlign: "left",
+  transition: "background 90ms ease-out",
 };
 
 const dropdownItemLabelStyle: CSSProperties = {
-  fontSize: 12,
-  fontWeight: 800,
+  fontSize: 13,
+  fontWeight: 500,
+  color: "#111827",
 };
 
 const dropdownItemDetailStyle: CSSProperties = {
   color: "#64748b",
-  fontFamily: UI_MONO_FONT_FAMILY,
-  fontSize: 10,
+  fontSize: 12,
+  fontWeight: 400,
 };
 
 const canvasViewportStyle: CSSProperties = {
@@ -4304,7 +5211,7 @@ const pageBadgeStyle: CSSProperties = {
   borderRadius: 4,
   background: "#6d5dfc",
   color: "#ffffff",
-  font: `800 9px/1.2 ${UI_MONO_FONT_FAMILY}`,
+  font: `600 9px/1.2 ${UI_MONO_FONT_FAMILY}`,
   whiteSpace: "nowrap",
   pointerEvents: "none",
 };
@@ -4476,6 +5383,7 @@ const layerButtonStyle: CSSProperties = {
 };
 
 const layerTreeRowStyle: CSSProperties = {
+  position: "relative",
   width: "100%",
   height: 28,
   display: "grid",
@@ -4491,12 +5399,55 @@ const layerTreeRowStyle: CSSProperties = {
   cursor: "pointer",
   font: `500 14px/21px ${UI_FONT_FAMILY}`,
   outline: "none",
+  transition: "background 90ms ease-out, box-shadow 90ms ease-out, opacity 90ms ease-out",
 };
 
 const layerTreeCaretStyle: CSSProperties = {
-  width: 14,
-  height: 14,
+  width: 18,
+  height: 18,
   objectFit: "contain",
+};
+
+const layerTreeCaretButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 18,
+  height: 18,
+  borderRadius: 4,
+  cursor: "pointer",
+  color: "#667085",
+};
+
+const layerTreeCaretIconStyle: CSSProperties = {
+  width: 16,
+  height: 16,
+  display: "inline-flex",
+};
+
+const UI_DROP_INSIDE_BG = "#eef2ff";
+const UI_DROP_INSIDE_RING = "inset 0 0 0 1px #6366f1";
+
+const layerDropLineTopStyle: CSSProperties = {
+  position: "absolute",
+  left: 6,
+  right: 6,
+  top: -1,
+  height: 2,
+  borderRadius: 2,
+  background: "#6366f1",
+  pointerEvents: "none",
+};
+
+const layerDropLineBottomStyle: CSSProperties = {
+  position: "absolute",
+  left: 6,
+  right: 6,
+  bottom: -1,
+  height: 2,
+  borderRadius: 2,
+  background: "#6366f1",
+  pointerEvents: "none",
 };
 
 const layerTreeIconStyle: CSSProperties = {
@@ -4523,7 +5474,7 @@ const panelHeaderStyle: CSSProperties = {
 const panelTitleStyle: CSSProperties = {
   margin: 0,
   fontSize: 12,
-  fontWeight: 800,
+  fontWeight: 600,
 };
 
 const panelDetailStyle: CSSProperties = {
@@ -4538,7 +5489,7 @@ const layerNameStyle: CSSProperties = {
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
   fontSize: 12,
-  fontWeight: 700,
+  fontWeight: 600,
 };
 
 const layerMetaStyle: CSSProperties = {
@@ -4572,7 +5523,7 @@ const dataPanelStatusStyle: CSSProperties = {
   background: "#fbfcfe",
   color: "#64748b",
   fontSize: 10,
-  fontWeight: 700,
+  fontWeight: 600,
 };
 
 const dataGroupStyle: CSSProperties = {
@@ -4602,7 +5553,7 @@ const dataGroupDetailStyle: CSSProperties = {
   color: "#94a3b8",
   fontFamily: UI_MONO_FONT_FAMILY,
   fontSize: 9,
-  fontWeight: 700,
+  fontWeight: 600,
   textTransform: "none",
 };
 
@@ -4690,7 +5641,7 @@ const dataTypePillStyle: CSSProperties = {
   boxShadow: UI_SURFACE_SHADOW,
   fontFamily: UI_MONO_FONT_FAMILY,
   fontSize: 9,
-  fontWeight: 700,
+  fontWeight: 600,
   lineHeight: 1,
 };
 
@@ -4713,7 +5664,7 @@ const dataActionButtonStyle: CSSProperties = {
   boxShadow:
     "0 0 0 1px rgba(232, 236, 241, 0.95), 0 1px 2px rgba(15, 23, 42, 0.03)",
   color: "#334155",
-  font: `700 10px/1 ${UI_FONT_FAMILY}`,
+  font: `600 10px/1 ${UI_FONT_FAMILY}`,
   outline: "none",
 };
 
@@ -4733,13 +5684,14 @@ const emptyTextStyle: CSSProperties = {
 const previewOverlayStyle: CSSProperties = {
   position: "fixed",
   inset: 0,
-  zIndex: 100,
-  display: "grid",
-  gridTemplateRows: "48px minmax(0, 1fr)",
+  zIndex: 1000,
+  display: "flex",
+  flexDirection: "column",
   background: "rgba(15, 23, 42, 0.56)",
 };
 
 const previewToolbarStyle: CSSProperties = {
+  flex: "0 0 48px",
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
@@ -4748,8 +5700,67 @@ const previewToolbarStyle: CSSProperties = {
   borderBottom: "1px solid #d8dee8",
 };
 
+const previewToolbarActionsStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+};
+
+const previewContentStyle: CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  display: "flex",
+  flexDirection: "column",
+};
+
 const previewScrollStyle: CSSProperties = {
+  flex: 1,
   minHeight: 0,
   overflow: "auto",
   padding: 28,
+};
+
+const exportMessageStyle: CSSProperties = {
+  flex: "0 0 auto",
+  padding: "10px 16px",
+  fontSize: 13,
+  fontWeight: 500,
+  borderBottom: "1px solid rgba(148, 163, 184, 0.35)",
+};
+
+const exportDiagnosticsPanelStyle: CSSProperties = {
+  flex: "0 0 auto",
+  maxHeight: 168,
+  overflow: "auto",
+  display: "flex",
+  flexDirection: "column",
+  gap: 2,
+  padding: "10px 16px",
+  background: "#ffffff",
+  borderBottom: "1px solid #d8dee8",
+};
+
+const exportDiagnosticRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  fontSize: 12.5,
+  color: "#334155",
+  lineHeight: 1.4,
+};
+
+const exportDiagnosticDotStyle: CSSProperties = {
+  flex: "0 0 auto",
+  width: 8,
+  height: 8,
+  borderRadius: 999,
+};
+
+const exportDiagnosticNodeStyle: CSSProperties = {
+  flex: "0 0 auto",
+  padding: "1px 6px",
+  borderRadius: 4,
+  background: "#f1f5f9",
+  color: "#475569",
+  font: "11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace",
 };

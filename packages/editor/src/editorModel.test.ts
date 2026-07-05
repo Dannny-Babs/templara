@@ -2,14 +2,22 @@ import { describe, expect, it } from "vitest";
 import { PAGE_PRESETS } from "@templara/core";
 import type {
   DocumentTemplate,
+  GroupNode,
   SectionNode,
+  ShapeNode,
   StackNode,
   TextNode,
   TextStyle,
 } from "@templara/core";
 import {
   buildEditorPageModel,
+  findEditableNode,
   getAlignmentFramePatches,
+  getResizeFramePatch,
+  groupNodesInTemplate,
+  moveNodeInTemplate,
+  reorderNodeInTemplate,
+  ungroupNodeInTemplate,
   updateNodeById,
 } from "./editorModel";
 
@@ -520,3 +528,308 @@ describe("alignment patches", () => {
     });
   });
 });
+
+describe("resize frame patches", () => {
+  const start = { x: 100, y: 100, width: 200, height: 100 };
+
+  it("grows width and height from the south-east handle without moving origin", () => {
+    expect(getResizeFramePatch(start, "se", { x: 40, y: 20 })).toEqual({
+      width: 240,
+      height: 120,
+    });
+  });
+
+  it("moves origin when resizing from the north-west handle", () => {
+    expect(getResizeFramePatch(start, "nw", { x: 30, y: 10 })).toEqual({
+      x: 130,
+      y: 110,
+      width: 170,
+      height: 90,
+    });
+  });
+
+  it("only touches one axis for edge handles", () => {
+    expect(getResizeFramePatch(start, "e", { x: 25, y: 999 })).toEqual({
+      width: 225,
+    });
+    expect(getResizeFramePatch(start, "n", { x: 999, y: 15 })).toEqual({
+      y: 115,
+      height: 85,
+    });
+  });
+
+  it("clamps to a minimum size and pins the anchored edge", () => {
+    const patch = getResizeFramePatch(start, "w", { x: 500, y: 0 }, { minSize: 12 });
+
+    expect(patch.width).toBe(12);
+    // Right edge stays at x + width = 300, so the left edge pins to 288.
+    expect(patch.x).toBe(288);
+  });
+
+  it("snaps moving edges to the grid when a snap function is supplied", () => {
+    const snap = (value: number): number => Math.round(value / 8) * 8;
+    const patch = getResizeFramePatch(start, "se", { x: 5, y: 7 }, { snap });
+
+    // Right edge 305 -> 304 (width 204); bottom 207 -> 208 (height 108).
+    expect(patch.width).toBe(204);
+    expect(patch.height).toBe(108);
+  });
+
+  it("keeps the aspect ratio for corner handles when locked", () => {
+    const square = { x: 0, y: 0, width: 100, height: 100 };
+    const patch = getResizeFramePatch(square, "se", { x: 40, y: 5 }, {
+      lockAspect: true,
+    });
+
+    expect(patch.width).toBe(140);
+    expect(patch.height).toBe(140);
+  });
+});
+
+function zOrderTemplate(): DocumentTemplate {
+  const style: TextStyle = { fontFamily: "Geist", fontSize: 12 };
+  const make = (id: string, x: number): TextNode => ({
+    id,
+    type: "text",
+    frame: { x, y: 0, width: 40, height: 20 },
+    content: [{ kind: "text", text: id }],
+    style,
+  });
+
+  return {
+    id: "z-order",
+    version: "0.0.1",
+    unit: "px",
+    pages: [
+      {
+        id: "page-1",
+        size: PAGE_PRESETS.letter,
+        layers: [
+          {
+            id: "fixed",
+            kind: "fixed",
+            nodes: [make("a", 0), make("b", 50), make("c", 100)],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function nodeOrder(template: DocumentTemplate): string[] {
+  return template.pages[0].layers[0].nodes.map((node) => node.id);
+}
+
+describe("z-order reordering", () => {
+  it("brings a node to the front and to the back", () => {
+    const front = zOrderTemplate();
+    expect(reorderNodeInTemplate(front, "a", "front")).toBe(true);
+    expect(nodeOrder(front)).toEqual(["b", "c", "a"]);
+
+    const back = zOrderTemplate();
+    expect(reorderNodeInTemplate(back, "c", "back")).toBe(true);
+    expect(nodeOrder(back)).toEqual(["c", "a", "b"]);
+  });
+
+  it("nudges forward and backward by one", () => {
+    const forward = zOrderTemplate();
+    expect(reorderNodeInTemplate(forward, "a", "forward")).toBe(true);
+    expect(nodeOrder(forward)).toEqual(["b", "a", "c"]);
+
+    const backward = zOrderTemplate();
+    expect(reorderNodeInTemplate(backward, "c", "backward")).toBe(true);
+    expect(nodeOrder(backward)).toEqual(["a", "c", "b"]);
+  });
+
+  it("is a no-op at the boundaries", () => {
+    const template = zOrderTemplate();
+    expect(reorderNodeInTemplate(template, "c", "front")).toBe(false);
+    expect(reorderNodeInTemplate(template, "a", "back")).toBe(false);
+    expect(nodeOrder(template)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("group and ungroup", () => {
+  it("groups siblings, rebases child frames, and round-trips via ungroup", () => {
+    const template = zOrderTemplate();
+    // move b/c so bounds start at x=50
+    const groupId = groupNodesInTemplate(template, ["b", "c"], "group-1");
+    expect(groupId).toBe("group-1");
+    expect(nodeOrder(template)).toEqual(["a", "group-1"]);
+
+    const group = findEditableNode(template, "group-1");
+    expect(group?.type).toBe("group");
+    expect(group?.frame).toEqual({ x: 50, y: 0, width: 90, height: 20 });
+
+    const child = group && group.type === "group" ? group.children.find((c) => c.id === "b") : undefined;
+    expect(child?.frame.x).toBe(0);
+
+    const freed = ungroupNodeInTemplate(template, "group-1");
+    expect(freed).toEqual(["b", "c"]);
+    const restored = findEditableNode(template, "b");
+    expect(restored?.frame.x).toBe(50);
+  });
+
+  it("refuses to group a single node", () => {
+    const template = zOrderTemplate();
+    expect(groupNodesInTemplate(template, ["a"], "group-1")).toBeUndefined();
+  });
+});
+
+function moveTemplate(): DocumentTemplate {
+  const style: TextStyle = { fontFamily: "Geist", fontSize: 12 };
+  const text = (id: string, x: number, y: number): TextNode => ({
+    id,
+    type: "text",
+    frame: { x, y, width: 40, height: 20 },
+    content: [{ kind: "text", text: id }],
+    style,
+  });
+
+  return {
+    id: "move",
+    version: "0.0.1",
+    unit: "px",
+    pages: [
+      {
+        id: "page-1",
+        size: PAGE_PRESETS.letter,
+        layers: [
+          {
+            id: "fixed",
+            kind: "fixed",
+            nodes: [
+              text("a", 0, 0),
+              text("b", 50, 0),
+              {
+                id: "box",
+                type: "group",
+                frame: { x: 100, y: 100, width: 200, height: 200 },
+                children: [text("c", 10, 10)],
+              } as GroupNode,
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function topLevelOrder(template: DocumentTemplate): string[] {
+  return template.pages[0].layers[0].nodes.map((node) => node.id);
+}
+
+describe("moveNodeInTemplate", () => {
+  it("reorders a node within the same parent", () => {
+    const template = moveTemplate();
+    expect(
+      moveNodeInTemplate(template, "a", { referenceId: "b", position: "after" }),
+    ).toBe(true);
+    expect(topLevelOrder(template)).toEqual(["b", "a", "box"]);
+    expect(findEditableNode(template, "a")?.frame).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it("reparents into a container and rebases the frame to stay put", () => {
+    const template = moveTemplate();
+    expect(
+      moveNodeInTemplate(template, "a", {
+        referenceId: "box",
+        position: "inside",
+      }),
+    ).toBe(true);
+    expect(topLevelOrder(template)).toEqual(["b", "box"]);
+
+    const box = findEditableNode(template, "box");
+    const moved =
+      box?.type === "group"
+        ? box.children.find((child) => child.id === "a")
+        : undefined;
+    // Box content origin is (100,100); the node's absolute origin was (0,0),
+    // so its local frame rebases to (-100,-100) and it renders in place.
+    expect(moved?.frame).toMatchObject({ x: -100, y: -100 });
+  });
+
+  it("reparents out of a container back up to the top level", () => {
+    const template = moveTemplate();
+    expect(
+      moveNodeInTemplate(template, "c", {
+        referenceId: "a",
+        position: "before",
+      }),
+    ).toBe(true);
+    expect(topLevelOrder(template)).toEqual(["c", "a", "b", "box"]);
+    expect(findEditableNode(template, "c")?.frame).toMatchObject({
+      x: 110,
+      y: 110,
+    });
+  });
+
+  it("refuses to move a container into its own descendant", () => {
+    const template = moveTemplate();
+    expect(
+      moveNodeInTemplate(template, "box", {
+        referenceId: "c",
+        position: "inside",
+      }),
+    ).toBe(false);
+    expect(topLevelOrder(template)).toEqual(["a", "b", "box"]);
+  });
+
+  it("reparents into a childless shape, initializing its children array", () => {
+    const template = shapeContainerTemplate();
+    expect(
+      moveNodeInTemplate(template, "a", {
+        referenceId: "card",
+        position: "inside",
+      }),
+    ).toBe(true);
+    expect(topLevelOrder(template)).toEqual(["card"]);
+
+    const card = findEditableNode(template, "card");
+    const moved =
+      card?.type === "shape"
+        ? card.children?.find((child) => child.id === "a")
+        : undefined;
+    // The shape sits at (100,100) with no padding, and the node was at (0,0),
+    // so it rebases to (-100,-100) and renders in place inside the shape.
+    expect(moved?.frame).toMatchObject({ x: -100, y: -100 });
+  });
+});
+
+function shapeContainerTemplate(): DocumentTemplate {
+  const style: TextStyle = { fontFamily: "Geist", fontSize: 12 };
+
+  return {
+    id: "shape-move",
+    version: "0.0.1",
+    unit: "px",
+    pages: [
+      {
+        id: "page-1",
+        size: PAGE_PRESETS.letter,
+        layers: [
+          {
+            id: "fixed",
+            kind: "fixed",
+            nodes: [
+              {
+                id: "a",
+                type: "text",
+                frame: { x: 0, y: 0, width: 40, height: 20 },
+                content: [{ kind: "text", text: "a" }],
+                style,
+              } as TextNode,
+              {
+                id: "card",
+                type: "shape",
+                shape: "rectangle",
+                frame: { x: 100, y: 100, width: 200, height: 200 },
+                style: { fill: "#ffffff" },
+              } as ShapeNode,
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}

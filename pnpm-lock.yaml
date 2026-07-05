@@ -112,6 +112,9 @@ importers:
       '@templara/core':
         specifier: workspace:*
         version: link:../core
+      '@templara/pdf':
+        specifier: workspace:*
+        version: link:../pdf
       '@templara/react-renderer':
         specifier: workspace:*
         version: link:../react-renderer
@@ -154,6 +157,10 @@ importers:
       '@templara/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@templara/renderer':
+        specifier: workspace:*
+        version: link:../renderer
 
 packages:
 

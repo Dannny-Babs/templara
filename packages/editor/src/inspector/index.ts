@@ -1,4 +1,4 @@
-import { createContext, createElement, Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, createElement, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, ReactElement, ReactNode } from "react";
 import type { IconSvgElement } from "@hugeicons/react";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -30,7 +30,7 @@ import {
   TypeCursorIcon
 } from "@hugeicons-pro/core-stroke-rounded";
 import { ChevronDownIcon } from "@hugeicons-pro/core-stroke-sharp";
-import { PAGE_PRESETS } from "@templara/core";
+import { PAGE_PRESETS, describeExpression, evaluateExpressionPreview } from "@templara/core";
 import type {
   BarcodeNode,
   Box,
@@ -61,10 +61,16 @@ import {
   isFieldBindableForNode,
   sampleValueForBindingPath
 } from "../dataExplorer";
+import { insertBindingToken, parseInlineContent, serializeInlineContent } from "../textContent";
 
 export type EditableNode = DocNode | FlowNode;
 export type InspectorTab = "layout" | "data" | "logic" | "advanced";
 export type InspectorTargetId = `page:${string}` | `node:${string}`;
+export type InspectorCommitOptions = { history?: boolean; transaction?: string };
+export type NodeCommitHandler = (
+  update: (node: EditableNode) => void,
+  options?: InspectorCommitOptions
+) => void;
 
 export interface PageInspectorDraft {
   sizePreset?: string;
@@ -206,6 +212,8 @@ const UI_CHROME_CLASS = "tmpl-field";
 const UI_SEGMENT_CLASS = "tmpl-seg";
 const UI_BUTTON_CLASS = "tmpl-btn";
 const UI_TOGGLE_CLASS = "tmpl-toggle";
+const UI_MENU_CLASS = "tmpl-menu";
+const UI_MENU_ITEM_CLASS = "tmpl-menu-item";
 const GRID_SIZE = 8;
 const SNAP_THRESHOLD = 5;
 const INSPECTOR_METADATA_KEY = "inspector";
@@ -362,7 +370,7 @@ export function NodeInspectorPanel({
   uiState: InspectorUiState;
   dispatch: (action: InspectorUiAction) => void;
   onFrameCommit: (framePatch: Partial<Frame>) => void;
-  onNodeCommit: (update: (node: EditableNode) => void) => void;
+  onNodeCommit: NodeCommitHandler;
   onDuplicate: () => void;
   onDelete: () => void;
 }): ReactElement {
@@ -395,7 +403,7 @@ export function NodeInspectorPanel({
         "div",
         { ref: scrollRef, style: inspectorContentStyle },
         selectedCount > 1 ? createElement("div", { style: noticeStyle }, `Multi-select: editing ${item.label} as the primary node. Shared alignment can move the full selection from the canvas.`) : null,
-        activeTab === "layout" ? createElement(NodeLayoutTab, { item, onFrameCommit, onNodeCommit }) : null,
+        activeTab === "layout" ? createElement(NodeLayoutTab, { template, data, item, nodeItems, onFrameCommit, onNodeCommit }) : null,
         activeTab === "data" ? createElement(NodeDataTab, { template, data, item, nodeItems, onNodeCommit }) : null,
         activeTab === "logic" ? createElement(NodeLogicTab, { template, data, item, nodeItems, onNodeCommit }) : null,
         activeTab === "advanced" ? createElement(NodeAdvancedTab, { template, data, item, nodeItems, selectedCount, onNodeCommit }) : null
@@ -460,7 +468,7 @@ export function PageInspectorPanel({
         tabs: createElement(InspectorTabs, { targetId, activeTab, dispatch }),
         footer:
           activeTab === "data"
-            ? createElement(InspectorDataFooter, null)
+            ? null
             : createElement(InspectorFooter, {
                 title: "Workspace",
                 status: showGrid ? "Grid visible" : "Grid hidden",
@@ -522,6 +530,12 @@ const INSPECTOR_CHROME_CSS = `
 .${UI_BUTTON_CLASS}:disabled{background:${UI_DISABLED_BG};border-color:${UI_DISABLED_BORDER};color:${UI_TEXT_HELPER};box-shadow:none;cursor:not-allowed;}
 .${UI_TOGGLE_CLASS}{outline:none;border-radius:999px;transition:box-shadow 120ms ease-out;}
 .${UI_TOGGLE_CLASS}:focus-visible{box-shadow:${UI_RING};}
+.${UI_MENU_CLASS}{border:1px solid ${UI_REST_BORDER};background:${UI_CARD_SURFACE};border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,0.16),0 2px 6px rgba(15,23,42,0.06);padding:5px;display:flex;flex-direction:column;gap:1px;max-height:280px;overflow-y:auto;animation:tmpl-menu-in 110ms ease-out;}
+@keyframes tmpl-menu-in{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}
+.${UI_MENU_ITEM_CLASS}{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:7px 9px;border:0;border-radius:7px;background:transparent;color:${UI_TEXT_VALUE};font:400 13px/1.25 ${UI_FONT_FAMILY};text-align:left;cursor:pointer;transition:background 90ms ease-out;white-space:nowrap;}
+.${UI_MENU_ITEM_CLASS}:hover:not(:disabled),.${UI_MENU_ITEM_CLASS}.is-active{background:${UI_ACCENT_SOFT};}
+.${UI_MENU_ITEM_CLASS}[aria-selected="true"]{color:${UI_ACCENT};font-weight:500;}
+.${UI_MENU_ITEM_CLASS}:disabled{opacity:0.45;cursor:not-allowed;}
 `;
 
 function InspectorShell({ header, tabs, footer, children }: { header: ReactNode; tabs: ReactNode; footer: ReactNode; children?: ReactNode }): ReactElement {
@@ -729,11 +743,17 @@ function InspectorTabs({
 }
 
 function NodeLayoutTab({
+  template,
+  data,
   item,
+  nodeItems,
   onFrameCommit,
   onNodeCommit
 }: {
+  template: DocumentTemplate;
+  data?: Record<string, unknown>;
   item: EditorNodeItem;
+  nodeItems: EditorNodeItem[];
   onFrameCommit: (framePatch: Partial<Frame>) => void;
   onNodeCommit: (update: (node: EditableNode) => void) => void;
 }): ReactElement {
@@ -747,7 +767,7 @@ function NodeLayoutTab({
       createElement(TextAlignmentSection, { node, onNodeCommit }),
       createElement(TextTypographySection, { node, onNodeCommit }),
       createElement(TextColorsSection, { node, onNodeCommit }),
-      createElement(TextContentSection, { node, onNodeCommit })
+      createElement(TextContentSection, { template, data, item, nodeItems, node, onNodeCommit })
     );
   }
 
@@ -1991,15 +2011,6 @@ function SectionHeaderIconButton({ icon, title, onClick }: { icon: IconSvgElemen
   );
 }
 
-function InspectorDataFooter(): ReactElement {
-  return createElement(
-    "footer",
-    { style: inspectorDataFooterStyle },
-    createElement(ToolIcon, { icon: InformationCircleIcon, size: 14 }),
-    createElement("span", null, "Bindings in page-level content resolve against the current page scope.")
-  );
-}
-
 function PageAdvancedTab({
   targetId,
   showGrid,
@@ -2056,8 +2067,62 @@ function PositionSection({ targetId, frame, onFrameCommit }: { targetId: Inspect
   );
 }
 
-function TextContentSection({ node, onNodeCommit }: { node: TextNode; onNodeCommit: (update: (node: EditableNode) => void) => void }): ReactElement {
+function TextContentSection({
+  template,
+  data,
+  item,
+  nodeItems,
+  node,
+  onNodeCommit
+}: {
+  template: DocumentTemplate;
+  data?: Record<string, unknown>;
+  item: EditorNodeItem;
+  nodeItems: EditorNodeItem[];
+  node: TextNode;
+  onNodeCommit: (update: (node: EditableNode) => void) => void;
+}): ReactElement {
   const metadata = getInspectorMetadata(node);
+  const serialized = textNodeContentValue(node);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const caretRef = useRef<number>(serialized.length);
+  const [draft, setDraft] = useState(serialized);
+
+  useEffect(() => {
+    setDraft(serialized);
+    caretRef.current = serialized.length;
+  }, [serialized]);
+
+  const fieldOptions = useMemo(
+    () => buildInsertableFieldOptions(template, data, nodeItems, item),
+    [template, data, nodeItems, item]
+  );
+
+  const commitValue = (value: string): void =>
+    onNodeCommit((next) => {
+      if (next.type === "text") next.content = parseTextContent(value);
+    });
+
+  const trackCaret = (): void => {
+    const el = inputRef.current;
+    if (el && el.selectionStart != null) caretRef.current = el.selectionStart;
+  };
+
+  const handleInsertField = (path: string): void => {
+    if (!path) return;
+    const current = inputRef.current?.value ?? draft;
+    const insertion = insertBindingToken(current, path, caretRef.current);
+    setDraft(insertion.value);
+    caretRef.current = insertion.caret;
+    commitValue(insertion.value);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(insertion.caret, insertion.caret);
+      }
+    });
+  };
 
   return createElement(
     InspectorSection,
@@ -2065,26 +2130,49 @@ function TextContentSection({ node, onNodeCommit }: { node: TextNode; onNodeComm
     createElement(
       NodeRow,
       { label: "Content" },
-      createElement(NodeInlineInput, {
-        value: textNodeContentValue(node),
-        mono: true,
-        onCommit: (value) =>
-          onNodeCommit((draft) => {
-            if (draft.type === "text") draft.content = parseTextContent(value);
+      createElement(
+        "div",
+        { className: UI_CHROME_CLASS, style: nodeInputShellStyle },
+        createElement("input", {
+          ref: inputRef,
+          value: draft,
+          onChange: (event) => {
+            setDraft((event.currentTarget as HTMLInputElement).value);
+            trackCaret();
+          },
+          onSelect: trackCaret,
+          onClick: trackCaret,
+          onKeyUp: trackCaret,
+          onFocus: trackCaret,
+          onBlur: () => {
+            trackCaret();
+            if (draft !== serialized) commitValue(draft);
+          },
+          onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+            if (event.key === "Escape") {
+              setDraft(serialized);
+              event.currentTarget.blur();
+            }
+          },
+          style: { ...nodeInputFieldStyle, fontFamily: UI_MONO_FONT_FAMILY }
+        })
+      ),
+      fieldOptions.length > 0
+        ? createElement(TextInsertFieldMenu, { options: fieldOptions, onInsert: handleInsertField })
+        : createElement(NodeIconButton, {
+            icon: ThirdBracketIcon,
+            title: "Wrap content as a field binding",
+            onClick: () => {
+              const current = (inputRef.current?.value ?? draft).trim();
+              const wrapped = current && !/^\{\{.*\}\}$/.test(current) ? `{{${current}}}` : current || "{{field}}";
+              setDraft(wrapped);
+              caretRef.current = wrapped.length;
+              commitValue(wrapped);
+            }
           })
-      }),
-      createElement(NodeIconButton, {
-        icon: ThirdBracketIcon,
-        title: "Insert field binding",
-        onClick: () =>
-          onNodeCommit((draft) => {
-            if (draft.type !== "text") return;
-            const current = textNodeContentValue(draft).trim();
-            const wrapped = current && !/^\{\{.*\}\}$/.test(current) ? `{{${current}}}` : current || "{{field}}";
-            draft.content = parseTextContent(wrapped);
-          })
-      })
     ),
+    createElement("span", { style: nodeHintStyle }, "Type text or insert a data field at the caret. Fields render as {{path}} chips."),
     createElement(
       NodeRow,
       { label: "Placeholder" },
@@ -2108,6 +2196,65 @@ function TextContentSection({ node, onNodeCommit }: { node: TextNode; onNodeComm
             if (draft.type === "text") draft.overflow = value as TextNode["overflow"];
           })
       })
+    )
+  );
+}
+
+interface InsertableFieldOption {
+  path: string;
+  label: string;
+}
+
+function buildInsertableFieldOptions(
+  template: DocumentTemplate,
+  data: Record<string, unknown> | undefined,
+  nodeItems: EditorNodeItem[],
+  item: EditorNodeItem
+): InsertableFieldOption[] {
+  const model = buildDataExplorerModel({ template, data, nodeItems, selectedNodeIds: [item.id] });
+  const options: InsertableFieldOption[] = [];
+  const seen = new Set<string>();
+
+  for (const group of model.groups) {
+    for (const field of group.fields) {
+      if (!field.bindable || field.kind === "array" || field.kind === "object") continue;
+      if (seen.has(field.path)) continue;
+
+      seen.add(field.path);
+      options.push({ path: field.path, label: field.label });
+    }
+  }
+
+  return options;
+}
+
+function TextInsertFieldMenu({
+  options,
+  onInsert
+}: {
+  options: InsertableFieldOption[];
+  onInsert: (path: string) => void;
+}): ReactElement {
+  return createElement(
+    "div",
+    { className: UI_CHROME_CLASS, style: textInsertMenuShellStyle, title: "Insert data field at caret" },
+    createElement(HugeiconsIcon, { icon: ThirdBracketIcon, size: 14, color: "#64748b", strokeWidth: 1.8 }),
+    createElement(
+      "select",
+      {
+        value: "",
+        onChange: (event) => {
+          const target = event.currentTarget as HTMLSelectElement;
+          const path = target.value;
+          target.value = "";
+          onInsert(path);
+        },
+        style: textInsertSelectStyle
+      },
+      createElement("option", { value: "", disabled: true }, "Field"),
+      options.map((option) =>
+        createElement("option", { key: option.path, value: option.path }, `${option.label} · ${option.path}`)
+      )
     )
   );
 }
@@ -2249,19 +2396,14 @@ function RepeatLayoutSection({ node, onNodeCommit }: { node: RepeatNode; onNodeC
         onNodeCommit((draft) => {
           if (draft.type === "repeat") draft.layout.rowSizing = value as RepeatNode["layout"]["rowSizing"];
         })
-    }),
-    createElement(ToggleSwitch, {
-      label: "Fill available space",
-      checked: Boolean(node.layout.fillAvailableSpace),
-      onChange: () =>
-        onNodeCommit((draft) => {
-          if (draft.type === "repeat") draft.layout.fillAvailableSpace = !draft.layout.fillAvailableSpace;
-        })
     })
   );
 }
 
 function RepeatPaginationSection({ node, onNodeCommit }: { node: RepeatNode; onNodeCommit: (update: (node: EditableNode) => void) => void }): ReactElement {
+  const rowSizing = node.layout.rowSizing ?? "fixed";
+  const fillAvailableSpace = node.layout.fillAvailableSpace === true;
+
   return createElement(
     InspectorSection,
     { targetId: `node:${node.id}`, sectionId: "repeat-pagination", title: "Pagination", detail: node.layout.splitItems === false ? "keep row" : "auto" },
@@ -2278,15 +2420,93 @@ function RepeatPaginationSection({ node, onNodeCommit }: { node: RepeatNode; onN
         })
     }),
     createElement(ToggleSwitch, {
-      label: "Keep together",
+      label: "Keep row intact",
       checked: node.layout.splitItems === false,
       onChange: () =>
         onNodeCommit((draft) => {
           if (draft.type === "repeat") draft.layout.splitItems = draft.layout.splitItems === false ? undefined : false;
         })
     }),
-    createElement(DisabledControl, { label: "Repeat header", value: "Engine support planned" })
+    createElement(SegmentedControl, {
+      label: "Row sizing",
+      value: rowSizing,
+      options: [
+        { value: "fixed", label: "Fixed" },
+        { value: "compact", label: "Compact" }
+      ],
+      onChange: (value) =>
+        onNodeCommit((draft) => {
+          if (draft.type === "repeat") draft.layout.rowSizing = value === "compact" ? "compact" : undefined;
+        })
+    }),
+    createElement(NumberControl, {
+      label: "Min row height",
+      value: node.layout.minRowHeight ?? 0,
+      onCommit: (value) =>
+        onNodeCommit((draft) => {
+          if (draft.type !== "repeat") return;
+          const next = Math.max(0, Math.round(value));
+          draft.layout.minRowHeight = next > 0 ? next : undefined;
+        })
+    }),
+    createElement(NumberControl, {
+      label: "Max shrink %",
+      value: Math.round((node.layout.maxCompressionRatio ?? 0.12) * 100),
+      disabled: rowSizing !== "compact",
+      onCommit: (value) =>
+        onNodeCommit((draft) => {
+          if (draft.type === "repeat") draft.layout.maxCompressionRatio = clampRatioPercent(value);
+        })
+    }),
+    createElement(ToggleSwitch, {
+      label: "Fill available space",
+      checked: fillAvailableSpace,
+      onChange: () =>
+        onNodeCommit((draft) => {
+          if (draft.type === "repeat") draft.layout.fillAvailableSpace = draft.layout.fillAvailableSpace === true ? undefined : true;
+        })
+    }),
+    createElement(NumberControl, {
+      label: "Max grow %",
+      value: Math.round((node.layout.maxExpansionRatio ?? 0.15) * 100),
+      disabled: !fillAvailableSpace,
+      onCommit: (value) =>
+        onNodeCommit((draft) => {
+          if (draft.type === "repeat") draft.layout.maxExpansionRatio = clampRatioPercent(value);
+        })
+    }),
+    createElement(ToggleSwitch, {
+      label: "Repeat header on break",
+      checked: node.layout.repeatHeaderOnPageBreak === true,
+      onChange: () =>
+        onNodeCommit((draft) => {
+          if (draft.type === "repeat")
+            draft.layout.repeatHeaderOnPageBreak =
+              draft.layout.repeatHeaderOnPageBreak === true ? undefined : true;
+        })
+    }),
+    createElement(ToggleSwitch, {
+      label: "Keep block together",
+      checked: node.layout.keepTogether === true,
+      onChange: () =>
+        onNodeCommit((draft) => {
+          if (draft.type === "repeat")
+            draft.layout.keepTogether = draft.layout.keepTogether === true ? undefined : true;
+        })
+    }),
+    node.header && node.header.length > 0
+      ? undefined
+      : createElement(DisabledControl, {
+          label: "Header row",
+          value: "Add a header row in JSON to enable"
+        })
   );
+}
+
+function clampRatioPercent(percent: number): number {
+  if (!Number.isFinite(percent)) return 0;
+  const ratio = percent / 100;
+  return Math.max(0, Math.min(1, ratio));
 }
 
 function RepeatDataSection({
@@ -2839,13 +3059,7 @@ function TextActionsSection({ node, onNodeCommit }: { node: TextNode; onNodeComm
 }
 
 function parseTextContent(value: string): TextNode["content"] {
-  const trimmed = value.trim();
-  const bindingMatch = trimmed.match(/^\{\{\s*([^}]+?)\s*\}\}$/);
-  if (bindingMatch) {
-    const path = bindingMatch[1];
-    return [{ kind: "field", label: path, binding: { path } }];
-  }
-  return value ? [{ kind: "text", text: value }] : [];
+  return parseInlineContent(value);
 }
 
 function fontFamilyOptions(current: string): Array<{ value: string; label: string }> {
@@ -2987,20 +3201,7 @@ function NodeInlineSelect({
   options: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
 }): ReactElement {
-  return createElement(
-    "span",
-    { className: UI_CHROME_CLASS, style: nodeSelectWrapStyle },
-    createElement(
-      "select",
-      {
-        value,
-        onChange: (event) => onChange((event.currentTarget as HTMLSelectElement).value),
-        style: nodeSelectInnerStyle
-      },
-      options.map((option) => createElement("option", { key: option.value, value: option.value }, option.label))
-    ),
-    createElement("span", { style: nodeSelectChevronStyle, "aria-hidden": true }, createElement(SelectChevronIcon, { size: 13 }))
-  );
+  return createElement(Select, { value, options, onChange, variant: "inline" });
 }
 
 function NodeSegmented({
@@ -3486,7 +3687,7 @@ function ImageAlignmentSection({ node, onNodeCommit }: { node: ImageNode; onNode
   );
 }
 
-function ImageAppearanceSection({ node, onNodeCommit }: { node: ImageNode; onNodeCommit: (update: (node: EditableNode) => void) => void }): ReactElement {
+function ImageAppearanceSection({ node, onNodeCommit }: { node: ImageNode; onNodeCommit: NodeCommitHandler }): ReactElement {
   const metadata = getInspectorMetadata(node);
   const opacity = Math.round((node.opacity ?? 1) * 100);
   const cornerRadius = Number(metadata.cornerRadius ?? 0);
@@ -3504,7 +3705,11 @@ function ImageAppearanceSection({ node, onNodeCommit }: { node: ImageNode; onNod
       createElement(NodeSlider, {
         value: opacity,
         max: 100,
-        onChange: (value) => onNodeCommit((draft) => (draft.opacity = Math.max(0, Math.min(100, value)) / 100))
+        onChange: (value) =>
+          onNodeCommit(
+            (draft) => (draft.opacity = Math.max(0, Math.min(100, value)) / 100),
+            { transaction: `node:${node.id}:opacity` }
+          )
       }),
       createElement(NodeNumberInput, {
         value: opacity,
@@ -3789,7 +3994,7 @@ function ImageEffectsSection({ node, onNodeCommit }: { node: ImageNode; onNodeCo
   );
 }
 
-function ImageTransformSection({ node, onNodeCommit }: { node: ImageNode; onNodeCommit: (update: (node: EditableNode) => void) => void }): ReactElement {
+function ImageTransformSection({ node, onNodeCommit }: { node: ImageNode; onNodeCommit: NodeCommitHandler }): ReactElement {
   const metadata = getInspectorMetadata(node);
   const scaleX = Number(metadata.scaleX ?? 100);
   const scaleY = Number(metadata.scaleY ?? 100);
@@ -3802,13 +4007,29 @@ function ImageTransformSection({ node, onNodeCommit }: { node: ImageNode; onNode
     createElement(
       NodeRow,
       { label: "Scale X (editor-only)", labelWidth: 128 },
-      createElement(NodeSlider, { value: scaleX, max: 200, onChange: (value) => onNodeCommit((draft) => setInspectorMetadataValue(draft, "scaleX", value)) }),
+      createElement(NodeSlider, {
+        value: scaleX,
+        max: 200,
+        onChange: (value) =>
+          onNodeCommit(
+            (draft) => setInspectorMetadataValue(draft, "scaleX", value),
+            { transaction: `node:${node.id}:scale-x` }
+          )
+      }),
       createElement(NodeNumberInput, { value: scaleX, suffix: "%", onCommit: (value) => onNodeCommit((draft) => setInspectorMetadataValue(draft, "scaleX", Math.max(0, value))) })
     ),
     createElement(
       NodeRow,
       { label: "Scale Y (editor-only)", labelWidth: 128 },
-      createElement(NodeSlider, { value: scaleY, max: 200, onChange: (value) => onNodeCommit((draft) => setInspectorMetadataValue(draft, "scaleY", value)) }),
+      createElement(NodeSlider, {
+        value: scaleY,
+        max: 200,
+        onChange: (value) =>
+          onNodeCommit(
+            (draft) => setInspectorMetadataValue(draft, "scaleY", value),
+            { transaction: `node:${node.id}:scale-y` }
+          )
+      }),
       createElement(NodeNumberInput, { value: scaleY, suffix: "%", onCommit: (value) => onNodeCommit((draft) => setInspectorMetadataValue(draft, "scaleY", Math.max(0, value))) })
     ),
     createElement(
@@ -4219,6 +4440,7 @@ function RenderLogicSection({
   const operator = expression.operator ?? "exists";
   const fieldOptions = ensureOption(logicFieldOptions(explorer), expression.source);
   const sampleValue = formatDataSampleValue(sampleValueForBindingPath(data, expression.source, explorer.selectedScope));
+  const previewResult = logicPreviewResult(expression, data);
   const title = node.type === "conditional" ? "Condition" : "Visibility";
 
   return createElement(
@@ -4274,10 +4496,40 @@ function RenderLogicSection({
                   })
               }),
           createElement(FieldRow, { label: "Sample value", value: sampleValue }),
+          createElement(FieldRow, { label: "Reads as", value: describeExpression(expression) }),
+          previewResult === undefined
+            ? null
+            : createElement(FieldRow, {
+                label: "With sample data",
+                value: previewResult ? "Passes ✓" : "Does not pass"
+              }),
           createElement(EmptyText, null, "Visible If affects Preview and export. The editor keeps the node available for editing.")
         )
       : createElement(EmptyText, null, "Enable Visible If to conditionally render this node in Preview and export.")
   );
+}
+
+/**
+ * Best-effort design-time preview of whether an expression passes against the
+ * document sample data. Returns undefined when the field lives in a scope the
+ * editor cannot resolve at rest (e.g. a repeat item), so we avoid showing a
+ * misleading pass/fail.
+ */
+function logicPreviewResult(
+  expression: ExpressionRef,
+  data?: Record<string, unknown>
+): boolean | undefined {
+  if (!data) {
+    return undefined;
+  }
+
+  const root = expression.source.split(/[.[]/)[0]?.trim();
+
+  if (!root || !Object.prototype.hasOwnProperty.call(data, root)) {
+    return undefined;
+  }
+
+  return evaluateExpressionPreview(expression, data);
 }
 
 function RepeatFilterSection({
@@ -4353,6 +4605,7 @@ function RepeatFilterSection({
                   })
               }),
           createElement(FieldRow, { label: "Sample value", value: sampleValue }),
+          createElement(FieldRow, { label: "Keeps rows where", value: describeExpression(expression) }),
           createElement(EmptyText, null, "Repeat If filters Preview and export rows before pagination and diagnostics.")
         )
       : createElement(EmptyText, null, "Enable Repeat If to filter rendered rows while keeping the row template editable.")
@@ -4605,29 +4858,7 @@ function PageInlineSelect({
   options: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
 }): ReactElement {
-  const [focused, setFocused] = useState(false);
-
-  return createElement(
-    "span",
-    {
-      style: {
-        ...pageSelectWrapStyle,
-        ...(focused ? pageSelectFocusStyle : pageSelectSurfaceStyle)
-      }
-    },
-    createElement(
-      "select",
-      {
-        value,
-        onChange: (event) => onChange((event.currentTarget as HTMLSelectElement).value),
-        onFocus: () => setFocused(true),
-        onBlur: () => setFocused(false),
-        style: pageSelectInnerStyle
-      },
-      options.map((option) => createElement("option", { key: option.value, value: option.value }, option.label))
-    ),
-    createElement("span", { style: pageSelectChevronStyle, "aria-hidden": true }, createElement(SelectChevronIcon, { size: 14 }))
-  );
+  return createElement(Select, { value, options, onChange, variant: "inline" });
 }
 
 function PageInlineNumber({
@@ -5057,6 +5288,241 @@ function NumberControl({ label, value, onCommit, disabled }: { label: string; va
   );
 }
 
+interface SelectOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
+
+function SelectCheckIcon({ size }: { size: number }): ReactElement {
+  return createElement(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 2.5,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      "aria-hidden": true
+    },
+    createElement("polyline", { points: "20 6 9 17 4 12" })
+  );
+}
+
+/**
+ * Shared shadcn-style listbox. Replaces native <select> across the inspector so
+ * every dropdown looks and behaves identically (rounded popover, hover states,
+ * keyboard nav, checkmark on the selected item). The menu is rendered with fixed
+ * positioning so it escapes the inspector's scroll clipping.
+ */
+function Select({
+  value,
+  options,
+  onChange,
+  variant = "field",
+  ariaLabel
+}: {
+  value: string;
+  options: SelectOption[];
+  onChange: (value: string) => void;
+  variant?: "field" | "inline";
+  ariaLabel?: string;
+}): ReactElement {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    placement: "down" | "up";
+  } | null>(null);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const selected = options.find((option) => option.value === value) ?? null;
+
+  const measure = useCallback(() => {
+    const el = triggerRef.current;
+    if (!el) {
+      return;
+    }
+
+    const rect = el.getBoundingClientRect();
+    const estimatedHeight = Math.min(280, options.length * 34 + 12);
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const placement: "down" | "up" =
+      spaceBelow < estimatedHeight + 12 && rect.top > spaceBelow ? "up" : "down";
+
+    setPos({
+      left: rect.left,
+      top: placement === "down" ? rect.bottom + 6 : rect.top - 6,
+      width: rect.width,
+      placement
+    });
+  }, [options.length]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    measure();
+
+    const handlePointerDown = (event: globalThis.PointerEvent): void => {
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+    };
+    const handleLayout = (): void => measure();
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("resize", handleLayout);
+    window.addEventListener("scroll", handleLayout, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("resize", handleLayout);
+      window.removeEventListener("scroll", handleLayout, true);
+    };
+  }, [open, measure]);
+
+  const openMenu = (): void => {
+    const current = options.findIndex((option) => option.value === value);
+    setActiveIndex(current >= 0 ? current : 0);
+    setOpen(true);
+  };
+
+  const commit = (next: string): void => {
+    onChange(next);
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const moveActive = (delta: number): void => {
+    setActiveIndex((index) => {
+      const count = options.length;
+      let next = index;
+      for (let step = 0; step < count; step += 1) {
+        next = (next + delta + count) % count;
+        if (!options[next]?.disabled) {
+          return next;
+        }
+      }
+      return index;
+    });
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
+    if (!open) {
+      if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openMenu();
+      }
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      moveActive(1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveActive(-1);
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      const option = options[activeIndex];
+      if (option && !option.disabled) {
+        commit(option.value);
+      }
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false);
+    }
+  };
+
+  const trigger = createElement(
+    "button",
+    {
+      ref: triggerRef,
+      type: "button",
+      className: UI_CHROME_CLASS,
+      "aria-haspopup": "listbox",
+      "aria-expanded": open,
+      "aria-label": ariaLabel,
+      onClick: () => (open ? setOpen(false) : openMenu()),
+      onKeyDown: handleKeyDown,
+      style: variant === "inline" ? selectTriggerInlineStyle : selectTriggerFieldStyle
+    },
+    createElement(
+      "span",
+      { style: selectTriggerLabelStyle },
+      selected ? selected.label : ""
+    ),
+    createElement(
+      "span",
+      { style: selectTriggerChevronStyle, "aria-hidden": true },
+      createElement(SelectChevronIcon, { size: variant === "inline" ? 13 : 14 })
+    )
+  );
+
+  const menu =
+    open && pos
+      ? createElement(
+          "div",
+          {
+            ref: menuRef,
+            className: UI_MENU_CLASS,
+            role: "listbox",
+            style: {
+              position: "fixed",
+              left: pos.left,
+              top: pos.placement === "down" ? pos.top : undefined,
+              bottom: pos.placement === "up" ? window.innerHeight - pos.top : undefined,
+              minWidth: pos.width,
+              zIndex: 4000
+            }
+          },
+          options.map((option, index) =>
+            createElement(
+              "button",
+              {
+                key: option.value,
+                type: "button",
+                role: "option",
+                "aria-selected": option.value === value,
+                disabled: option.disabled,
+                className:
+                  index === activeIndex
+                    ? `${UI_MENU_ITEM_CLASS} is-active`
+                    : UI_MENU_ITEM_CLASS,
+                onMouseEnter: () => setActiveIndex(index),
+                onClick: () => commit(option.value)
+              },
+              createElement("span", { style: selectOptionLabelStyle }, option.label),
+              option.value === value
+                ? createElement(
+                    "span",
+                    { style: selectOptionCheckStyle },
+                    createElement(SelectCheckIcon, { size: 14 })
+                  )
+                : null
+            )
+          )
+        )
+      : null;
+
+  return createElement(
+    "span",
+    { style: variant === "inline" ? selectRootInlineStyle : selectRootStyle },
+    trigger,
+    menu
+  );
+}
+
 function SelectControl({
   label,
   value,
@@ -5068,33 +5534,11 @@ function SelectControl({
   options: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
 }): ReactElement {
-  const [focused, setFocused] = useState(false);
-
   return createElement(
     "label",
     { style: controlWrapStyle },
     createElement("span", { style: fieldLabelStyle }, label),
-    createElement(
-      "span",
-      {
-        style: {
-          ...selectFieldWrapStyle,
-          ...(focused ? selectFieldFocusStyle : selectFieldSurfaceStyle)
-        }
-      },
-      createElement(
-        "select",
-        {
-          value,
-          onChange: (event) => onChange((event.currentTarget as HTMLSelectElement).value),
-          onFocus: () => setFocused(true),
-          onBlur: () => setFocused(false),
-          style: selectInnerStyle
-        },
-        options.map((option) => createElement("option", { key: option.value, value: option.value }, option.label))
-      ),
-      createElement("span", { style: selectChevronStyle, "aria-hidden": true }, createElement(SelectChevronIcon, { size: 14 }))
-    )
+    createElement(Select, { value, options, onChange, ariaLabel: label })
   );
 }
 
@@ -5542,12 +5986,7 @@ function applyDefaultFieldFormat(fieldRun: FieldRun, formatType: string): void {
 }
 
 function textNodeContentValue(node: TextNode): string {
-  return node.content
-    .map((part) => {
-      if (part.kind === "text") return part.text;
-      return `{{${part.binding.path}}}`;
-    })
-    .join("");
+  return serializeInlineContent(node.content);
 }
 
 function dynamicValueBindingPath(value: DynamicValue): string {
@@ -6157,7 +6596,7 @@ const inspectorNodeNameStyle: CSSProperties = {
   whiteSpace: "nowrap",
   color: UI_TEXT_VALUE,
   fontSize: 14,
-  fontWeight: 700,
+  fontWeight: 600,
   lineHeight: 1.25
 };
 
@@ -6545,6 +6984,82 @@ const selectChevronStyle: CSSProperties = {
   transform: "translateY(-50%)",
   color: "#94a3b8",
   pointerEvents: "none"
+};
+
+const selectRootStyle: CSSProperties = {
+  position: "relative",
+  display: "block",
+  width: "100%",
+  minWidth: 0
+};
+
+const selectRootInlineStyle: CSSProperties = {
+  position: "relative",
+  display: "inline-flex",
+  minWidth: 0
+};
+
+const selectTriggerFieldStyle: CSSProperties = {
+  height: SELECT_H,
+  width: "100%",
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  padding: "0 10px 0 12px",
+  borderRadius: UI_CHROME_RADIUS,
+  background: "#ffffff",
+  color: UI_TEXT_VALUE,
+  font: `500 13px/1.2 ${UI_FONT_FAMILY}`,
+  cursor: "pointer"
+};
+
+const selectTriggerInlineStyle: CSSProperties = {
+  height: NODE_CTRL_H,
+  minWidth: 0,
+  maxWidth: "100%",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 6,
+  padding: "0 8px 0 10px",
+  borderRadius: UI_CHROME_RADIUS,
+  background: "#ffffff",
+  color: UI_TEXT_VALUE,
+  font: `500 12px/1.2 ${UI_FONT_FAMILY}`,
+  cursor: "pointer"
+};
+
+const selectTriggerLabelStyle: CSSProperties = {
+  flex: "1 1 auto",
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  textAlign: "left"
+};
+
+const selectTriggerChevronStyle: CSSProperties = {
+  flex: "0 0 auto",
+  display: "grid",
+  placeItems: "center",
+  color: "#94a3b8"
+};
+
+const selectOptionLabelStyle: CSSProperties = {
+  flex: "1 1 auto",
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap"
+};
+
+const selectOptionCheckStyle: CSSProperties = {
+  flex: "0 0 auto",
+  display: "grid",
+  placeItems: "center",
+  color: UI_ACCENT
 };
 
 const segmentedStyle: CSSProperties = {
@@ -7048,7 +7563,7 @@ const sectionLabelStyle: CSSProperties = {
   marginTop: 2,
   color: "#64748b",
   fontSize: 10,
-  fontWeight: 700,
+  fontWeight: 600,
   textTransform: "uppercase",
   letterSpacing: "0.04em"
 };
@@ -7067,7 +7582,7 @@ const lowRiskPillStyle: CSSProperties = {
   background: "#dcfce7",
   color: "#15803d",
   fontSize: 10,
-  fontWeight: 800
+  fontWeight: 600
 };
 
 const secondaryButtonStyle: CSSProperties = {
@@ -7078,7 +7593,7 @@ const secondaryButtonStyle: CSSProperties = {
   borderRadius: 6,
   background: "#ffffff",
   color: "#4f46e5",
-  font: `700 11px/1 ${UI_FONT_FAMILY}`,
+  font: `600 11px/1 ${UI_FONT_FAMILY}`,
   cursor: "pointer"
 };
 
@@ -7101,7 +7616,7 @@ const conditionHeaderStyle: CSSProperties = {
 const conditionTitleStyle: CSSProperties = {
   color: "#334155",
   fontSize: 11,
-  fontWeight: 700
+  fontWeight: 600
 };
 
 const inlineButtonGroupStyle: CSSProperties = {
@@ -7359,7 +7874,7 @@ const sampleEditorToolbarStyle: CSSProperties = {
   gap: 8,
   color: "#64748b",
   fontSize: 11,
-  fontWeight: 700
+  fontWeight: 600
 };
 
 const sampleEditorApplyButtonStyle: CSSProperties = {
@@ -7370,7 +7885,7 @@ const sampleEditorApplyButtonStyle: CSSProperties = {
   background: "#ffffff",
   color: "#4338ca",
   boxShadow: UI_SURFACE_SHADOW,
-  font: `800 11px/1 ${UI_FONT_FAMILY}`
+  font: `600 11px/1 ${UI_FONT_FAMILY}`
 };
 
 const sampleEditorTextAreaStyle: CSSProperties = {
@@ -7490,19 +8005,6 @@ const tokenColorDotStyle: CSSProperties = {
   boxShadow: "inset 0 0 0 1px rgba(15, 23, 42, 0.08)"
 };
 
-const inspectorDataFooterStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: 8,
-  padding: "10px 12px",
-  borderTop: "1px solid #dbeafe",
-  background: "#eff6ff",
-  color: "#1d4ed8",
-  fontSize: 11,
-  lineHeight: 1.4,
-  fontWeight: 500
-};
-
 const nodeRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -7554,6 +8056,28 @@ const nodeInputFieldStyle: CSSProperties = {
   fontSize: 12,
   fontWeight: 400,
   lineHeight: 1.2
+};
+
+const textInsertMenuShellStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 4,
+  height: NODE_CTRL_H,
+  padding: "0 8px",
+  borderRadius: NODE_RADIUS,
+  flexShrink: 0
+};
+
+const textInsertSelectStyle: CSSProperties = {
+  border: "none",
+  outline: "none",
+  background: "transparent",
+  color: UI_TEXT_VALUE,
+  fontSize: 12,
+  fontWeight: 500,
+  lineHeight: 1.2,
+  maxWidth: 96,
+  cursor: "pointer"
 };
 
 const nodeInputSuffixStyle: CSSProperties = {

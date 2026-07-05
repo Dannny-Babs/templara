@@ -9,5 +9,5 @@
     "rootDir": "src"
   },
   "include": ["src"],
-  "references": [{ "path": "../core" }, { "path": "../react-renderer" }, { "path": "../renderer" }]
+  "references": [{ "path": "../core" }, { "path": "../pdf" }, { "path": "../react-renderer" }, { "path": "../renderer" }]
 }
