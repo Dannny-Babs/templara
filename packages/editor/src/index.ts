@@ -111,6 +111,8 @@ import {
   inspectorUiReducer,
   resolvePageInspectorDraft,
 } from "./inspector";
+import type { InsertTool } from "./shortcuts";
+import { resolveEditorShortcut } from "./shortcuts";
 
 export type {
   AlignmentCommand,
@@ -126,8 +128,6 @@ export {
 const DEFAULT_ZOOM = 0.76;
 const GRID_SIZE = 8;
 const SNAP_THRESHOLD = 5;
-const NUDGE_STEP = 1;
-const NUDGE_LARGE_STEP = 10;
 const RULER_SIZE = 24;
 const TOOLTIP_DELAY_MS = 420;
 const BINDING_DRAG_TYPE = "application/x-templara-binding";
@@ -167,20 +167,6 @@ export interface DocumentEditorProps {
 
 type EditableNode = DocNode | FlowNode;
 type PreviewMode = "sample" | "large" | "export";
-type InsertTool =
-  | "select"
-  | "text"
-  | "image"
-  | "rectangle"
-  | "line"
-  | "shape"
-  | "barcode"
-  | "qr"
-  | "table"
-  | "repeat"
-  | "condition"
-  | "frame"
-  | "signature";
 type GuideAxis = "x" | "y";
 
 interface DragState {
@@ -740,147 +726,75 @@ export function DocumentEditor({
 
   useEffect(() => {
     function handleToolShortcut(event: globalThis.KeyboardEvent): void {
-      if (previewOpen || event.defaultPrevented || event.altKey) {
+      const command = resolveEditorShortcut(event, {
+        previewOpen,
+        selectedCount: selectedNodeIds.length,
+        target: event.target instanceof HTMLElement ? event.target : null,
+        tools: insertTools,
+      });
+
+      if (!command) {
         return;
       }
 
-      const target = event.target instanceof HTMLElement ? event.target : null;
-      const tagName = target?.tagName.toLowerCase();
-
-      if (
-        target?.isContentEditable ||
-        tagName === "input" ||
-        tagName === "textarea" ||
-        tagName === "select"
-      ) {
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+      // Escape (reset to the select tool) preserves the browser default the way
+      // it did before this handler was extracted; every other handled shortcut
+      // cancels it.
+      if (event.key !== "Escape") {
         event.preventDefault();
-        if (event.shiftKey) {
-          redoTemplate();
-        } else {
+      }
+
+      switch (command.type) {
+        case "undo":
           undoTemplate();
-        }
-        return;
-      }
-
-      if (
-        selectedNodeIds.length > 0 &&
-        (event.key === "Backspace" || event.key === "Delete")
-      ) {
-        event.preventDefault();
-        deleteNodes(selectedNodeIds);
-        return;
-      }
-
-      if (
-        selectedNodeIds.length > 0 &&
-        (event.metaKey || event.ctrlKey) &&
-        event.key.toLowerCase() === "d"
-      ) {
-        event.preventDefault();
-        duplicateNode(selectedNodeIds[0]);
-        return;
-      }
-
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        event.key.toLowerCase() === "g"
-      ) {
-        event.preventDefault();
-        if (event.shiftKey) {
-          ungroupSelected();
-        } else {
-          groupSelected();
-        }
-        return;
-      }
-
-      if (
-        selectedNodeIds.length === 1 &&
-        (event.metaKey || event.ctrlKey) &&
-        (event.key === "]" || event.key === "[")
-      ) {
-        event.preventDefault();
-        const forward = event.key === "]";
-        reorderSelected(
-          event.shiftKey
-            ? forward
-              ? "front"
-              : "back"
-            : forward
-              ? "forward"
-              : "backward",
-        );
-        return;
-      }
-
-      if (event.metaKey || event.ctrlKey) {
-        return;
-      }
-
-      if (selectedNodeIds.length > 0 && event.key.startsWith("Arrow")) {
-        const step = event.shiftKey ? NUDGE_LARGE_STEP : NUDGE_STEP;
-        const dx =
-          event.key === "ArrowLeft"
-            ? -step
-            : event.key === "ArrowRight"
-              ? step
-              : 0;
-        const dy =
-          event.key === "ArrowUp"
-            ? -step
-            : event.key === "ArrowDown"
-              ? step
-              : 0;
-
-        if (dx === 0 && dy === 0) {
           return;
-        }
+        case "redo":
+          redoTemplate();
+          return;
+        case "delete":
+          deleteNodes(selectedNodeIds);
+          return;
+        case "duplicate":
+          duplicateNode(selectedNodeIds[0]);
+          return;
+        case "group":
+          groupSelected();
+          return;
+        case "ungroup":
+          ungroupSelected();
+          return;
+        case "reorder":
+          reorderSelected(command.command);
+          return;
+        case "select-tool":
+          setActiveTool(command.tool);
+          return;
+        case "nudge": {
+          const patches: Record<string, Partial<Frame>> = {};
 
-        event.preventDefault();
-        const patches: Record<string, Partial<Frame>> = {};
+          for (const id of selectedNodeIds) {
+            const item = itemLookup.get(id);
 
-        for (const id of selectedNodeIds) {
-          const item = itemLookup.get(id);
+            if (!item || item.node.locked === true) {
+              continue;
+            }
 
-          if (!item || item.node.locked === true) {
-            continue;
+            patches[id] = {
+              x: roundFrameValue(item.frame.x + command.dx),
+              y: roundFrameValue(item.frame.y + command.dy),
+            };
           }
 
-          patches[id] = {
-            x: roundFrameValue(item.frame.x + dx),
-            y: roundFrameValue(item.frame.y + dy),
-          };
-        }
+          if (Object.keys(patches).length === 0) {
+            return;
+          }
 
-        if (Object.keys(patches).length === 0) {
+          updateFramePatches(patches, {
+            transaction: `nudge:${selectedNodeIds.join(",")}`,
+          });
           return;
         }
-
-        updateFramePatches(patches, {
-          transaction: `nudge:${selectedNodeIds.join(",")}`,
-        });
-        return;
       }
-
-      if (event.key === "Escape") {
-        setActiveTool("select");
-        return;
-      }
-
-      const nextTool = insertTools.find(
-        (tool) => tool.shortcut.toLowerCase() === event.key.toLowerCase(),
-      );
-
-      if (!nextTool) {
-        return;
-      }
-
-      event.preventDefault();
-      setActiveTool(nextTool.id);
     }
 
     window.addEventListener("keydown", handleToolShortcut);
@@ -1543,7 +1457,6 @@ function ToolRail({
           style: railIconStyle,
           size: 16,
         }),
-        createElement("span", { style: railLabelStyle }, tool.label),
         tooltipTool === tool.id
           ? createElement(
               "span",
@@ -1977,7 +1890,7 @@ function PreviewDropdown({
           }),
           createElement(DropdownItem, {
             label: "Export PDF",
-            detail: "Open preview and print to PDF",
+            detail: "Open preview, then print to PDF",
             onClick: () => runPreview("export"),
           }),
         )
@@ -4742,27 +4655,17 @@ const toolRailStyle: CSSProperties = {
 };
 
 const toolButtonStyle: CSSProperties = {
-  width: 52,
+  width: 40,
+  height: 40,
   display: "flex",
-  flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
-  gap: 3,
-  padding: "5px 2px",
+  padding: 0,
   border: "1px solid transparent",
   borderRadius: 8,
   background: "transparent",
   color: "#111827",
   cursor: "pointer",
-};
-
-const railLabelStyle: CSSProperties = {
-  fontSize: 9,
-  lineHeight: 1,
-  fontWeight: 500,
-  letterSpacing: "0.01em",
-  textAlign: "center",
-  color: "inherit",
 };
 
 const railIconStyle: CSSProperties = {
