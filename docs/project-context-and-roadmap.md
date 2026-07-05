@@ -223,21 +223,15 @@ It includes:
 
 This template replaced the earlier invoice/receipt direction as the active stress-test document.
 
-## Current Known Issue
+## Current Handoff State
 
-The user reported that the preview dropdown is not opening in the visible app.
+The preview and zoom dropdowns now use measured fixed-position menu placement so they are not dependent on toolbar overflow or panel stacking.
 
-Browser DOM verification showed the dropdown button and menu behavior in automation, but the user observed an issue in the real interaction. Treat this as unresolved UI polish.
+The strongest continuation reference is:
 
-Likely next debugging checks:
+- [100 percent execution plan](100-percent-execution-plan.md)
 
-- confirm click target and z-index
-- confirm dropdown is not clipped by toolbar overflow
-- confirm toolbar `overflow: hidden` is not clipping the menu
-- confirm dropdown position relative to the viewport
-- confirm pointer events on the split button
-
-This should be fixed before adding more dropdown-dependent controls.
+That document includes the current progress estimate, package responsibilities, algorithms, milestone order, acceptance criteria, and handoff rules for another agent.
 
 ## What Is Left Overall
 
@@ -415,12 +409,13 @@ Avoid:
 
 Recommended next order:
 
-1. Fix preview dropdown clipping/interaction.
-2. Polish top toolbar spacing and dropdown behavior.
-3. Make inspector controls more real, starting with text and repeat nodes.
-4. Add resize handles and delete/duplicate shortcuts.
-5. Improve data binding insertion into text nodes.
-6. Expand renderer tests around repeat pagination.
-7. Implement real PDF export action.
+1. Add resize handles for selected nodes.
+2. Add delete, duplicate, nudge, and shift-nudge keyboard shortcuts.
+3. Harden history transactions so drag/resize/slider gestures commit one undo entry.
+4. Add real PDF export from the Preview dropdown.
+5. Add export diagnostics in the preview surface.
+6. Improve binding insertion into existing text nodes.
+7. Back more inspector controls with schema-supported renderer behavior.
+8. Add template validation and migration scaffolding in `@templara/core`.
 
-The next best practical step is to fix the preview dropdown bug, because the dropdown pattern will be reused for export and diagnostics.
+The next best practical step is resize handles plus keyboard editing operations, because they move the editor from a template viewer/editor into a real design tool.

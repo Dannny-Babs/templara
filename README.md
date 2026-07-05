@@ -68,10 +68,13 @@ Start here:
 - [Product and system overview](docs/product-system-overview.md)
 - [Project context and roadmap](docs/project-context-and-roadmap.md)
 - [Architecture notes](docs/architecture.md)
+- [100 percent execution plan](docs/100-percent-execution-plan.md)
 
 The overview explains what Templara is, how the editor/renderer split works, the package architecture, the document model, and the long-term product direction.
 
 The context/roadmap doc summarizes what has been built in this chat and what remains.
+
+The 100 percent execution plan is the principal-level handoff for another agent. It defines progress, system architecture, algorithms, milestones, acceptance criteria, and the exact continuation order.
 
 ## Workspace
 
@@ -120,9 +123,9 @@ pnpm run build
 
 ## Known Near-Term Work
 
-- Fix the visible preview dropdown interaction/clipping issue.
+- Add resize handles, delete/duplicate, nudge, and history polishing.
+- Add real PDF export from Preview.
 - Make inspector controls more complete and fully backed by schema.
-- Add resize handles, delete/duplicate, nudge, and history.
 - Improve data binding insertion into text nodes.
 - Expand repeat pagination tests.
-- Add real PDF export action.
+- Add template validation and migration scaffolding.
