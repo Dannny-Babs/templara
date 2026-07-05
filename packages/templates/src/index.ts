@@ -702,3 +702,504 @@ export const invoiceSampleData = {
     paymentUrl: "https://pay.example/invoices/INV-2026-1048"
   }
 } satisfies Record<string, unknown>;
+
+export const receiptTemplate: DocumentTemplate = {
+  id: "receipt",
+  version: "0.0.1",
+  unit: "px",
+  metadata: { name: "Receipt Template" },
+  fonts,
+  variables: [
+    {
+      id: "receiptItemCount",
+      name: "Receipt Item Count",
+      category: "computed",
+      value: { kind: "formula", formula: { op: "count", path: "receipt.items" } }
+    }
+  ],
+  pages: [
+    {
+      id: "page-1",
+      name: "Receipt",
+      size: PAGE_PRESETS.letter,
+      margin: { top: 48, right: 48, bottom: 48, left: 48 },
+      layers: [
+        {
+          id: "background",
+          kind: "background",
+          nodes: [
+            rect("receipt-border", 36, 36, 744, 984, "#ffffff", "#cbd5e1"),
+            rect("receipt-header-band", 36, 36, 744, 108, "#f8fafc", "#cbd5e1"),
+            rect("receipt-accent", 36, 142, 744, 4, "#0f766e", "#0f766e")
+          ]
+        },
+        {
+          id: "fixed",
+          kind: "fixed",
+          nodes: [
+            textNode("receipt-business-name", 64, 56, 320, 26, [field("Business Name", "business.name")], {
+              fontFamily: "Geist",
+              fontSize: 22,
+              fontWeight: 800,
+              lineHeight: 1,
+              color: "#0f172a"
+            }),
+            textNode("receipt-business-address", 64, 88, 320, 34, [field("Business Address", "business.address")], smallStyle),
+            textNode("receipt-title", 508, 56, 244, 30, [{ kind: "text", text: "RECEIPT" }], {
+              fontFamily: "Geist",
+              fontSize: 26,
+              fontWeight: 800,
+              lineHeight: 1,
+              color: "#111827",
+              align: "right"
+            }),
+            textNode("receipt-number-label", 512, 98, 90, 12, [{ kind: "text", text: "RECEIPT NO." }], labelStyle),
+            textNode("receipt-number", 610, 94, 142, 18, [field("Receipt Number", "receipt.number")], { ...valueStyle, align: "right" }),
+            barcodeNode("receipt-barcode", "code128", 588, 118, 164, 24, bindingValue("receipt.number")),
+
+            rect("receipt-meta", 64, 168, 688, 58, "#f8fafc", "#cbd5e1"),
+            textNode("receipt-date-label", 80, 182, 90, 12, [{ kind: "text", text: "DATE" }], labelStyle),
+            textNode("receipt-date", 80, 200, 150, 16, [field("Date", "receipt.date", { type: "date", dateStyle: "medium" })], bodyStyle),
+            textNode("receipt-cashier-label", 300, 182, 90, 12, [{ kind: "text", text: "CASHIER" }], labelStyle),
+            textNode("receipt-cashier", 300, 200, 160, 16, [field("Cashier", "receipt.cashier")], bodyStyle),
+            textNode("receipt-payment-label", 540, 182, 120, 12, [{ kind: "text", text: "PAYMENT" }], labelStyle),
+            textNode("receipt-payment", 540, 200, 180, 16, [field("Payment Method", "receipt.paymentMethod")], bodyStyle)
+          ]
+        },
+        {
+          id: "flow",
+          kind: "flow",
+          nodes: [
+            {
+              id: "receipt-body",
+              type: "flowRegion",
+              frame: { x: 64, y: 258, width: 688, height: 668 },
+              flowBoundary: "page-margin",
+              children: [
+                {
+                  id: "receipt-items-repeat",
+                  type: "repeat",
+                  frame: { x: 0, y: 0, width: 688, height: 30 },
+                  binding: { path: "receipt.items" },
+                  itemAlias: "item",
+                  layout: {
+                    direction: "vertical",
+                    gap: 0,
+                    splitItems: false,
+                    rowSizing: "compact",
+                    minRowHeight: 26,
+                    maxCompressionRatio: 0.1,
+                    fillAvailableSpace: true,
+                    maxExpansionRatio: 0.15,
+                    repeatHeaderOnPageBreak: true
+                  },
+                  header: [
+                    rect("receipt-items-header-bg", 0, 0, 688, 30, "#ecfdf5", "#94a3b8"),
+                    textNode("receipt-h-item", 12, 9, 320, 12, [{ kind: "text", text: "Item" }], labelStyle),
+                    textNode("receipt-h-qty", 360, 9, 60, 12, [{ kind: "text", text: "Qty" }], labelStyle),
+                    textNode("receipt-h-price", 470, 9, 90, 12, [{ kind: "text", text: "Price" }], labelStyle),
+                    textNode("receipt-h-total", 596, 9, 76, 12, [{ kind: "text", text: "Total" }], { ...labelStyle, align: "right" })
+                  ],
+                  children: [
+                    rect("receipt-row-bg", 0, 0, 688, 30, "#ffffff", "#e2e8f0"),
+                    textNode("receipt-item-name", 12, 9, 320, 12, [field("Item", "item.name")], bodyStyle),
+                    textNode("receipt-item-qty", 360, 9, 60, 12, [field("Qty", "item.quantity", { type: "number" })], bodyStyle),
+                    textNode("receipt-item-price", 470, 9, 90, 12, [field("Price", "item.price", { type: "currency", currency: "USD" })], bodyStyle),
+                    textNode("receipt-item-total", 596, 9, 76, 12, [field("Total", "item.total", { type: "currency", currency: "USD" })], { ...bodyStyle, align: "right" })
+                  ]
+                },
+                {
+                  id: "receipt-summary",
+                  type: "group",
+                  frame: { x: 0, y: 20, width: 688, height: 210 },
+                  children: [
+                    rect("receipt-totals-box", 430, 0, 258, 118, "#ffffff", "#cbd5e1"),
+                    textNode("receipt-subtotal-label", 448, 16, 120, 12, [{ kind: "text", text: "Subtotal" }], bodyStyle),
+                    textNode("receipt-subtotal", 586, 14, 78, 16, [field("Subtotal", "receipt.totals.subtotal", { type: "currency", currency: "USD" })], { ...bodyStyle, align: "right" }),
+                    textNode("receipt-tax-label", 448, 44, 120, 12, [{ kind: "text", text: "Tax" }], bodyStyle),
+                    textNode("receipt-tax", 586, 42, 78, 16, [field("Tax", "receipt.totals.tax", { type: "currency", currency: "USD" })], { ...bodyStyle, align: "right" }),
+                    textNode("receipt-total-label", 448, 80, 120, 14, [{ kind: "text", text: "Total" }], { ...valueStyle, fontSize: 13 }),
+                    textNode("receipt-total", 574, 76, 90, 18, [field("Total", "receipt.totals.total", { type: "currency", currency: "USD" })], { ...valueStyle, fontSize: 15, align: "right" }),
+
+                    textNode("receipt-qr-label", 0, 128, 200, 12, [{ kind: "text", text: "VIEW ONLINE" }], labelStyle),
+                    qrNode("receipt-qr", 0, 148, 62, bindingValue("receipt.url")),
+                    textNode("receipt-thanks", 82, 156, 340, 18, [{ kind: "text", text: "Thank you for shopping with us." }], bodyStyle)
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  dataSchema: {
+    fields: [
+      { path: "business.name", label: "Business Name", kind: "string" },
+      { path: "business.address", label: "Business Address", kind: "string" },
+      { path: "receipt.number", label: "Receipt Number", kind: "string" },
+      { path: "receipt.date", label: "Date", kind: "date" },
+      { path: "receipt.cashier", label: "Cashier", kind: "string" },
+      { path: "receipt.paymentMethod", label: "Payment Method", kind: "string" },
+      { path: "receipt.items", label: "Items", kind: "array" },
+      { path: "receipt.totals.subtotal", label: "Subtotal", kind: "number" },
+      { path: "receipt.totals.tax", label: "Tax", kind: "number" },
+      { path: "receipt.totals.total", label: "Total", kind: "number" },
+      { path: "receipt.url", label: "Receipt URL", kind: "string" }
+    ]
+  }
+};
+
+export const receiptSampleData = {
+  business: {
+    name: "Harbor Market",
+    address: "88 Market Street\nToronto, ON M5E 1A9"
+  },
+  receipt: {
+    number: "R-2026-004182",
+    date: "2026-07-02",
+    cashier: "Jordan P.",
+    paymentMethod: "Visa •••• 4021",
+    items: [
+      { name: "Cold brew coffee", quantity: 2, price: 4.75, total: 9.5 },
+      { name: "Sourdough loaf", quantity: 1, price: 6.25, total: 6.25 },
+      { name: "Aged cheddar 200g", quantity: 1, price: 8.4, total: 8.4 },
+      { name: "Free-range eggs (dozen)", quantity: 2, price: 5.5, total: 11 }
+    ],
+    totals: { subtotal: 35.15, tax: 4.57, total: 39.72 },
+    url: "https://receipts.example/R-2026-004182"
+  }
+} satisfies Record<string, unknown>;
+
+export const payStubTemplate: DocumentTemplate = {
+  id: "pay-stub",
+  version: "0.0.1",
+  unit: "px",
+  metadata: { name: "Pay Stub Template" },
+  fonts,
+  variables: [
+    {
+      id: "grossPay",
+      name: "Gross Pay",
+      category: "computed",
+      value: { kind: "formula", formula: { op: "sum", path: "pay.earnings.amount" } }
+    },
+    {
+      id: "totalDeductions",
+      name: "Total Deductions",
+      category: "computed",
+      value: { kind: "formula", formula: { op: "sum", path: "pay.deductions.amount" } }
+    }
+  ],
+  pages: [
+    {
+      id: "page-1",
+      name: "Pay Stub",
+      size: PAGE_PRESETS.letter,
+      margin: { top: 48, right: 48, bottom: 48, left: 48 },
+      layers: [
+        {
+          id: "background",
+          kind: "background",
+          nodes: [
+            rect("stub-border", 36, 36, 744, 984, "#ffffff", "#cbd5e1"),
+            rect("stub-header-band", 36, 36, 744, 116, "#f8fafc", "#cbd5e1"),
+            rect("stub-accent", 36, 150, 744, 4, "#4f46e5", "#4f46e5")
+          ]
+        },
+        {
+          id: "fixed",
+          kind: "fixed",
+          nodes: [
+            textNode("stub-employer", 64, 56, 340, 26, [field("Employer", "employer.name")], {
+              fontFamily: "Geist",
+              fontSize: 22,
+              fontWeight: 800,
+              lineHeight: 1,
+              color: "#0f172a"
+            }),
+            textNode("stub-employer-address", 64, 90, 340, 34, [field("Employer Address", "employer.address")], smallStyle),
+            textNode("stub-title", 508, 56, 244, 26, [{ kind: "text", text: "PAY STATEMENT" }], {
+              fontFamily: "Geist",
+              fontSize: 20,
+              fontWeight: 800,
+              lineHeight: 1,
+              color: "#111827",
+              align: "right"
+            }),
+            textNode("stub-period-label", 512, 92, 120, 12, [{ kind: "text", text: "PAY PERIOD" }], labelStyle),
+            textNode("stub-period", 512, 108, 240, 14, [field("Pay Period", "pay.period")], { ...bodyStyle, align: "right" }),
+
+            rect("stub-employee-card", 64, 176, 340, 96, "#ffffff", "#cbd5e1"),
+            textNode("stub-employee-label", 80, 190, 200, 12, [{ kind: "text", text: "EMPLOYEE" }], labelStyle),
+            textNode("stub-employee-name", 80, 208, 300, 16, [field("Employee Name", "employee.name")], bodyStyle),
+            textNode("stub-employee-id", 80, 230, 300, 14, [field("Employee ID", "employee.id")], smallStyle),
+            textNode("stub-employee-role", 80, 250, 300, 14, [field("Role", "employee.role")], smallStyle),
+
+            rect("stub-paydate-card", 420, 176, 332, 96, "#ffffff", "#cbd5e1"),
+            textNode("stub-paydate-label", 436, 190, 200, 12, [{ kind: "text", text: "PAY DATE" }], labelStyle),
+            textNode("stub-paydate", 436, 208, 300, 16, [field("Pay Date", "pay.date", { type: "date", dateStyle: "medium" })], bodyStyle),
+            textNode("stub-method-label", 436, 234, 200, 12, [{ kind: "text", text: "METHOD" }], labelStyle),
+            textNode("stub-method", 436, 250, 300, 14, [field("Method", "pay.method")], smallStyle)
+          ]
+        },
+        {
+          id: "flow",
+          kind: "flow",
+          nodes: [
+            {
+              id: "stub-body",
+              type: "flowRegion",
+              frame: { x: 64, y: 300, width: 688, height: 626 },
+              flowBoundary: "page-margin",
+              children: [
+                textNode("stub-earnings-title", 0, 0, 300, 16, [{ kind: "text", text: "Earnings" }], { ...valueStyle, fontSize: 14 }),
+                {
+                  id: "stub-earnings-header",
+                  type: "group",
+                  frame: { x: 0, y: 22, width: 688, height: 28 },
+                  children: [
+                    rect("stub-earn-header-bg", 0, 0, 688, 28, "#eef2ff", "#a5b4fc"),
+                    textNode("stub-eh-type", 12, 8, 260, 12, [{ kind: "text", text: "Type" }], labelStyle),
+                    textNode("stub-eh-hours", 300, 8, 90, 12, [{ kind: "text", text: "Hours" }], labelStyle),
+                    textNode("stub-eh-rate", 430, 8, 100, 12, [{ kind: "text", text: "Rate" }], labelStyle),
+                    textNode("stub-eh-amount", 596, 8, 76, 12, [{ kind: "text", text: "Amount" }], { ...labelStyle, align: "right" })
+                  ]
+                },
+                {
+                  id: "stub-earnings-repeat",
+                  type: "repeat",
+                  frame: { x: 0, y: 0, width: 688, height: 26 },
+                  binding: { path: "pay.earnings" },
+                  itemAlias: "earning",
+                  layout: { direction: "vertical", gap: 0, splitItems: false, rowSizing: "compact", minRowHeight: 24, maxCompressionRatio: 0.1 },
+                  children: [
+                    rect("stub-earn-row-bg", 0, 0, 688, 26, "#ffffff", "#e2e8f0"),
+                    textNode("stub-earn-type", 12, 7, 260, 12, [field("Type", "earning.type")], bodyStyle),
+                    textNode("stub-earn-hours", 300, 7, 90, 12, [field("Hours", "earning.hours", { type: "number" })], bodyStyle),
+                    textNode("stub-earn-rate", 430, 7, 100, 12, [field("Rate", "earning.rate", { type: "currency", currency: "USD" })], bodyStyle),
+                    textNode("stub-earn-amount", 596, 7, 76, 12, [field("Amount", "earning.amount", { type: "currency", currency: "USD" })], { ...bodyStyle, align: "right" })
+                  ]
+                },
+                textNode("stub-deductions-title", 0, 16, 300, 16, [{ kind: "text", text: "Deductions" }], { ...valueStyle, fontSize: 14 }),
+                {
+                  id: "stub-deductions-header",
+                  type: "group",
+                  frame: { x: 0, y: 22, width: 688, height: 28 },
+                  children: [
+                    rect("stub-ded-header-bg", 0, 0, 688, 28, "#fef2f2", "#fca5a5"),
+                    textNode("stub-dh-type", 12, 8, 400, 12, [{ kind: "text", text: "Type" }], labelStyle),
+                    textNode("stub-dh-amount", 596, 8, 76, 12, [{ kind: "text", text: "Amount" }], { ...labelStyle, align: "right" })
+                  ]
+                },
+                {
+                  id: "stub-deductions-repeat",
+                  type: "repeat",
+                  frame: { x: 0, y: 0, width: 688, height: 26 },
+                  binding: { path: "pay.deductions" },
+                  itemAlias: "deduction",
+                  layout: { direction: "vertical", gap: 0, splitItems: false, rowSizing: "compact", minRowHeight: 24, maxCompressionRatio: 0.1 },
+                  children: [
+                    rect("stub-ded-row-bg", 0, 0, 688, 26, "#ffffff", "#e2e8f0"),
+                    textNode("stub-ded-type", 12, 7, 400, 12, [field("Type", "deduction.type")], bodyStyle),
+                    textNode("stub-ded-amount", 596, 7, 76, 12, [field("Amount", "deduction.amount", { type: "currency", currency: "USD" })], { ...bodyStyle, align: "right" })
+                  ]
+                },
+                {
+                  id: "stub-summary",
+                  type: "group",
+                  frame: { x: 0, y: 20, width: 688, height: 140 },
+                  children: [
+                    rect("stub-summary-box", 430, 0, 258, 118, "#ffffff", "#cbd5e1"),
+                    textNode("stub-gross-label", 448, 16, 130, 12, [{ kind: "text", text: "Gross Pay" }], bodyStyle),
+                    textNode("stub-gross", 586, 14, 78, 16, [field("Gross Pay", "pay.summary.gross", { type: "currency", currency: "USD" })], { ...bodyStyle, align: "right" }),
+                    textNode("stub-deduct-label", 448, 44, 130, 12, [{ kind: "text", text: "Deductions" }], bodyStyle),
+                    textNode("stub-deduct", 586, 42, 78, 16, [field("Deductions", "pay.summary.deductions", { type: "currency", currency: "USD" })], { ...bodyStyle, align: "right" }),
+                    textNode("stub-net-label", 448, 80, 130, 14, [{ kind: "text", text: "Net Pay" }], { ...valueStyle, fontSize: 13 }),
+                    textNode("stub-net", 574, 76, 90, 18, [field("Net Pay", "pay.summary.net", { type: "currency", currency: "USD" })], { ...valueStyle, fontSize: 15, align: "right" })
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  dataSchema: {
+    fields: [
+      { path: "employer.name", label: "Employer", kind: "string" },
+      { path: "employer.address", label: "Employer Address", kind: "string" },
+      { path: "employee.name", label: "Employee Name", kind: "string" },
+      { path: "employee.id", label: "Employee ID", kind: "string" },
+      { path: "employee.role", label: "Role", kind: "string" },
+      { path: "pay.period", label: "Pay Period", kind: "string" },
+      { path: "pay.date", label: "Pay Date", kind: "date" },
+      { path: "pay.method", label: "Method", kind: "string" },
+      { path: "pay.earnings", label: "Earnings", kind: "array" },
+      { path: "pay.deductions", label: "Deductions", kind: "array" },
+      { path: "pay.summary.gross", label: "Gross Pay", kind: "number" },
+      { path: "pay.summary.deductions", label: "Total Deductions", kind: "number" },
+      { path: "pay.summary.net", label: "Net Pay", kind: "number" }
+    ]
+  }
+};
+
+export const payStubSampleData = {
+  employer: {
+    name: "Northstar Freight Co.",
+    address: "425 Lakeshore Blvd W\nToronto, ON M5V 1A1"
+  },
+  employee: {
+    name: "Alex Morgan",
+    id: "EMP-4821",
+    role: "Dispatch Coordinator"
+  },
+  pay: {
+    period: "Jun 16 - Jun 30, 2026",
+    date: "2026-07-03",
+    method: "Direct Deposit •••• 8842",
+    earnings: [
+      { type: "Regular", hours: 80, rate: 32.5, amount: 2600 },
+      { type: "Overtime", hours: 6, rate: 48.75, amount: 292.5 },
+      { type: "Shift premium", hours: 12, rate: 3, amount: 36 }
+    ],
+    deductions: [
+      { type: "Federal tax", amount: 512.4 },
+      { type: "Provincial tax", amount: 214.6 },
+      { type: "CPP", amount: 168.9 },
+      { type: "EI", amount: 49.2 },
+      { type: "Health benefits", amount: 62 }
+    ],
+    summary: { gross: 2928.5, deductions: 1007.1, net: 1921.4 }
+  }
+} satisfies Record<string, unknown>;
+
+const labelPageSize = { width: 384, height: 576 };
+
+export const shippingLabelTemplate: DocumentTemplate = {
+  id: "shipping-label",
+  version: "0.0.1",
+  unit: "px",
+  metadata: { name: "Shipping Label Template" },
+  fonts,
+  pages: [
+    {
+      id: "page-1",
+      name: "Shipping Label",
+      size: labelPageSize,
+      margin: { top: 12, right: 12, bottom: 12, left: 12 },
+      layers: [
+        {
+          id: "background",
+          kind: "background",
+          nodes: [
+            rect("label-border", 8, 8, 368, 560, "#ffffff", "#111827"),
+            rect("label-carrier-band", 8, 8, 368, 54, "#111827", "#111827"),
+            rect("label-service-band", 8, 300, 368, 40, "#f1f5f9", "#111827")
+          ]
+        },
+        {
+          id: "fixed",
+          kind: "fixed",
+          nodes: [
+            textNode("label-carrier", 22, 22, 240, 26, [field("Carrier", "carrier.name")], {
+              fontFamily: "Geist",
+              fontSize: 20,
+              fontWeight: 800,
+              lineHeight: 1,
+              color: "#ffffff"
+            }),
+            textNode("label-service-tag", 262, 24, 100, 22, [field("Service", "shipment.service")], {
+              fontFamily: "Geist",
+              fontSize: 14,
+              fontWeight: 800,
+              lineHeight: 1,
+              color: "#ffffff",
+              align: "right"
+            }),
+
+            textNode("label-from-label", 22, 74, 120, 11, [{ kind: "text", text: "FROM" }], labelStyle),
+            textNode("label-from-name", 22, 88, 340, 14, [field("Sender Name", "sender.name")], smallStyle),
+            textNode("label-from-address", 22, 104, 340, 30, [field("Sender Address", "sender.address")], smallStyle),
+
+            rect("label-to-rule", 22, 142, 340, 1, "#111827", "#111827"),
+            textNode("label-to-label", 22, 150, 120, 12, [{ kind: "text", text: "SHIP TO" }], labelStyle),
+            textNode("label-to-name", 22, 168, 340, 20, [field("Recipient Name", "recipient.name")], {
+              fontFamily: "Geist",
+              fontSize: 16,
+              fontWeight: 800,
+              lineHeight: 1.1,
+              color: "#0f172a"
+            }),
+            textNode("label-to-address", 22, 192, 340, 46, [field("Recipient Address", "recipient.address")], {
+              fontFamily: "Geist",
+              fontSize: 13,
+              fontWeight: 500,
+              lineHeight: 1.25,
+              color: "#111827"
+            }),
+            textNode("label-to-zip", 22, 244, 340, 40, [field("Postal Code", "recipient.postalCode")], {
+              fontFamily: "Geist",
+              fontSize: 34,
+              fontWeight: 800,
+              lineHeight: 1,
+              color: "#0f172a"
+            }),
+
+            textNode("label-weight-label", 22, 310, 100, 11, [{ kind: "text", text: "WEIGHT" }], labelStyle),
+            textNode("label-weight", 22, 322, 140, 14, [field("Weight", "shipment.weight")], smallStyle),
+            textNode("label-ref-label", 200, 310, 120, 11, [{ kind: "text", text: "REFERENCE" }], labelStyle),
+            textNode("label-ref", 200, 322, 162, 14, [field("Reference", "shipment.reference")], smallStyle),
+
+            qrNode("label-routing-qr", 274, 352, 88, bindingValue("shipment.trackingUrl")),
+            textNode("label-tracking-label", 22, 356, 200, 11, [{ kind: "text", text: "TRACKING NUMBER" }], labelStyle),
+            textNode("label-tracking-number", 22, 370, 240, 18, [field("Tracking Number", "shipment.tracking")], {
+              fontFamily: "Geist Mono",
+              fontSize: 14,
+              fontWeight: 700,
+              lineHeight: 1.1,
+              color: "#0f172a"
+            }),
+            barcodeNode("label-tracking-barcode", "code128", 22, 452, 340, 92, bindingValue("shipment.tracking"))
+          ]
+        }
+      ]
+    }
+  ],
+  dataSchema: {
+    fields: [
+      { path: "carrier.name", label: "Carrier", kind: "string" },
+      { path: "sender.name", label: "Sender Name", kind: "string" },
+      { path: "sender.address", label: "Sender Address", kind: "string" },
+      { path: "recipient.name", label: "Recipient Name", kind: "string" },
+      { path: "recipient.address", label: "Recipient Address", kind: "string" },
+      { path: "recipient.postalCode", label: "Postal Code", kind: "string" },
+      { path: "shipment.service", label: "Service", kind: "string" },
+      { path: "shipment.weight", label: "Weight", kind: "string" },
+      { path: "shipment.reference", label: "Reference", kind: "string" },
+      { path: "shipment.tracking", label: "Tracking Number", kind: "string" },
+      { path: "shipment.trackingUrl", label: "Tracking URL", kind: "string" }
+    ]
+  }
+};
+
+export const shippingLabelSampleData = {
+  carrier: { name: "Northstar" },
+  sender: {
+    name: "Harbor Foods Ltd.",
+    address: "88 Market Street, Toronto, ON M5E 1A9"
+  },
+  recipient: {
+    name: "Prairie Retail Group",
+    address: "55 Distribution Way\nCalgary, AB",
+    postalCode: "T2C 5R9"
+  },
+  shipment: {
+    service: "PRIORITY",
+    weight: "18.4 kg",
+    reference: "PO-45009312",
+    tracking: "NSF984421CA",
+    trackingUrl: "https://track.example/NSF984421CA"
+  }
+} satisfies Record<string, unknown>;

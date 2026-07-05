@@ -591,7 +591,42 @@ function renderRepeatNode(
     });
   }
 
+  const headerChildren = node.header ?? [];
+  const hasHeader = headerChildren.length > 0;
+  const headerHeight = hasHeader
+    ? measureRepeatRowHeight(state, { ...node, children: headerChildren }, scope)
+    : 0;
+
   const baseRows = createRepeatRowPlans(state, node, scope, items);
+
+  // Keep-together: if the whole block cannot fit here but would fit on a fresh
+  // page, break before rendering anything so the repeat stays intact.
+  if (node.layout.keepTogether && baseRows.length > 0) {
+    const startPageBottom =
+      nextCursor.pageIndex === context.initialPageIndex ? context.firstPageBottom : context.continuationBottom;
+    const available = Math.max(0, startPageBottom - nextCursor.y);
+    const continuationHeight = Math.max(0, context.continuationBottom - context.continuationTop);
+    const blockHeight = repeatBlockHeight(headerHeight, baseRows, node.layout.gap, hasHeader);
+
+    if (blockHeight > available + LAYOUT_EPSILON && blockHeight <= continuationHeight + LAYOUT_EPSILON) {
+      nextCursor = forceFlowPageBreak(
+        state,
+        context,
+        nextCursor,
+        node.id,
+        `repeat ${node.binding.path} keep-together`,
+        true
+      );
+    }
+  }
+
+  // Render the initial header and advance the cursor before planning rows, so
+  // fit optimization and analysis see the space the header consumes.
+  if (hasHeader) {
+    const candidate = ensureFlowSpace(state, context, nextCursor, headerHeight, node.id);
+    nextCursor = renderRepeatHeaderRow(state, candidate, node, headerChildren, headerHeight, scope, origin);
+  }
+
   const optimization = optimizeRepeatRows(context, nextCursor, node, baseRows);
   const rows = optimization.rows;
   const analysis = analyzeRepeatFit(state, context, nextCursor, node, rows, optimization);
@@ -611,10 +646,65 @@ function renderRepeatNode(
   });
 
   for (const row of rows) {
+    if (hasHeader && node.layout.repeatHeaderOnPageBreak) {
+      const candidate = ensureFlowSpace(state, context, nextCursor, row.height, node.id);
+
+      if (candidate.pageIndex !== nextCursor.pageIndex) {
+        nextCursor = renderRepeatHeaderRow(state, candidate, node, headerChildren, headerHeight, scope, origin);
+        nextCursor = renderRepeatRow(state, context, nextCursor, node, row, origin);
+        continue;
+      }
+    }
+
     nextCursor = renderRepeatRow(state, context, nextCursor, node, row, origin);
   }
 
   return nextCursor;
+}
+
+function repeatBlockHeight(
+  headerHeight: number,
+  rows: RepeatRowPlan[],
+  gap: number,
+  hasHeader: boolean
+): number {
+  const rowsHeight = rows.reduce((sum, row, index) => sum + row.height + (index > 0 ? gap : 0), 0);
+  return (hasHeader ? headerHeight + gap : 0) + rowsHeight;
+}
+
+function renderRepeatHeaderRow(
+  state: RenderState,
+  cursor: FlowCursor,
+  node: RepeatNode,
+  headerChildren: FlowNode[],
+  headerHeight: number,
+  scope: Scope,
+  origin: Pick<Frame, "x" | "y">
+): FlowCursor {
+  const page = state.pages[cursor.pageIndex];
+  const repeatX = origin.x + node.frame.x;
+
+  addDebugBox(page, {
+    sourceNodeId: node.id,
+    kind: "repeat-row",
+    frame: {
+      x: repeatX,
+      y: cursor.y,
+      width: node.frame.width,
+      height: headerHeight
+    },
+    label: "repeat header",
+    color: DEBUG_COLORS.repeatRow
+  });
+
+  for (const child of headerChildren) {
+    renderAbsoluteNode(state, page, child, scope, { x: repeatX, y: cursor.y });
+  }
+
+  return {
+    pageIndex: cursor.pageIndex,
+    y: cursor.y + headerHeight + node.layout.gap
+  };
 }
 
 function createRepeatRowPlans(state: RenderState, node: RepeatNode, scope: Scope, items: unknown[]): RepeatRowPlan[] {
@@ -1642,6 +1732,17 @@ function renderAbsoluteNode(
       strokeWidth: node.style.strokeWidth,
       radius: node.style.radius
     });
+
+    // Shapes can act as containers: paint children relative to the shape's
+    // top-left corner, on top of the shape fill/stroke (mirrors `group`).
+    if (node.children) {
+      for (const child of node.children) {
+        renderAbsoluteNode(state, page, child, scope, {
+          x: origin.x + node.frame.x,
+          y: origin.y + node.frame.y
+        });
+      }
+    }
     return;
   }
 
@@ -2028,11 +2129,12 @@ function resolveDynamicValue(
 
 function resolveImageSource(state: RenderState, source: ImageSource, scope: Scope): { src: string; placeholder?: string } {
   if (source.kind === "url") {
-    return { src: source.url };
+    return { src: sanitizeImageUrl(source.url, state, source.url) };
   }
 
   if (source.kind === "asset") {
-    return { src: state.assets.get(source.assetId)?.source ?? "" };
+    const asset = state.assets.get(source.assetId)?.source ?? "";
+    return { src: sanitizeImageUrl(asset, state, source.assetId) };
   }
 
   if (state.mode === "template") {
@@ -2040,7 +2142,51 @@ function resolveImageSource(state: RenderState, source: ImageSource, scope: Scop
   }
 
   const value = resolveBinding(source.binding, state, scope);
-  return { src: value == null ? "" : String(value) };
+  return {
+    src: value == null ? "" : sanitizeImageUrl(String(value), state, source.binding.path),
+  };
+}
+
+/**
+ * Only allow image sources that cannot execute script. Permits http(s), inline
+ * `data:image/*`, protocol-relative, and same-origin/relative paths. Anything
+ * else (javascript:, vbscript:, file:, non-image data:, etc.) is dropped and a
+ * warning is recorded so untrusted data cannot inject an active URL.
+ */
+export function sanitizeImageUrl(
+  url: string,
+  state?: { warnings: RenderWarning[] },
+  sourceRef?: string,
+): string {
+  const trimmed = url.trim();
+
+  if (trimmed === "") {
+    return "";
+  }
+
+  const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(trimmed);
+
+  if (!schemeMatch) {
+    // No scheme: relative path, absolute path, protocol-relative, or fragment.
+    return trimmed;
+  }
+
+  const scheme = schemeMatch[1].toLowerCase();
+  const allowed =
+    scheme === "http" ||
+    scheme === "https" ||
+    (scheme === "data" && /^data:image\//i.test(trimmed));
+
+  if (allowed) {
+    return trimmed;
+  }
+
+  state?.warnings.push({
+    code: "image.unsafe-url",
+    message: `Blocked unsafe image source scheme "${scheme}:"${sourceRef ? ` from ${sourceRef}` : ""}.`,
+  });
+
+  return "";
 }
 
 function bindingPlaceholder(binding: BindingRef): string {
@@ -2417,7 +2563,14 @@ function normalizePath(path: string): string[] {
     .replace(/\[\]/g, "")
     .split(".")
     .map((part) => part.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter(isSafePathSegment);
+}
+
+const UNSAFE_PATH_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
+
+function isSafePathSegment(segment: string): boolean {
+  return !UNSAFE_PATH_SEGMENTS.has(segment);
 }
 
 function getPath(value: unknown, parts: string[]): unknown {
@@ -2434,6 +2587,12 @@ function getPath(value: unknown, parts: string[]): unknown {
     }
 
     if (typeof current !== "object") {
+      return undefined;
+    }
+
+    // Guard against prototype-pollution / prototype-chain reads from
+    // untrusted data paths: only traverse own, non-dangerous keys.
+    if (!isSafePathSegment(part) || !Object.prototype.hasOwnProperty.call(current, part)) {
       return undefined;
     }
 

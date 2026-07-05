@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PAGE_PRESETS } from "@templara/core";
 import type { ConditionalNode, DocumentTemplate, GridNode, SectionNode, StackNode } from "@templara/core";
-import { renderDocument } from "./index";
+import { renderDocument, sanitizeImageUrl } from "./index";
 
 const template: DocumentTemplate = {
   id: "test-invoice",
@@ -1448,5 +1448,233 @@ describe("renderDocument", () => {
     expect(barcode.value).toBe("NSF-984421");
     expect(barcode.format).toBe("code128");
     expect(qr.value).toBe("https://track.example/NSF-984421");
+  });
+});
+
+describe("security", () => {
+  it("allows safe image url schemes and rejects executable ones", () => {
+    expect(sanitizeImageUrl("https://cdn.example/logo.png")).toBe("https://cdn.example/logo.png");
+    expect(sanitizeImageUrl("http://cdn.example/logo.png")).toBe("http://cdn.example/logo.png");
+    expect(sanitizeImageUrl("data:image/png;base64,AAAA")).toBe("data:image/png;base64,AAAA");
+    expect(sanitizeImageUrl("/assets/logo.png")).toBe("/assets/logo.png");
+    expect(sanitizeImageUrl("logo.png")).toBe("logo.png");
+
+    expect(sanitizeImageUrl("javascript:alert(1)")).toBe("");
+    expect(sanitizeImageUrl("  javascript:alert(1)")).toBe("");
+    expect(sanitizeImageUrl("vbscript:msgbox(1)")).toBe("");
+    expect(sanitizeImageUrl("file:///etc/passwd")).toBe("");
+    expect(sanitizeImageUrl("data:text/html;base64,PHNjcmlwdD4=")).toBe("");
+  });
+
+  it("strips an unsafe bound image source and records a warning", () => {
+    const imageTemplate: DocumentTemplate = {
+      id: "img-security",
+      version: "0.0.1",
+      unit: "px",
+      pages: [
+        {
+          id: "page-1",
+          size: PAGE_PRESETS.letter,
+          layers: [
+            {
+              id: "fixed",
+              kind: "fixed",
+              nodes: [
+                {
+                  id: "logo",
+                  type: "image",
+                  frame: { x: 40, y: 40, width: 80, height: 40 },
+                  source: { kind: "binding", binding: { path: "brand.logo" } }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+
+    const result = renderDocument({
+      template: imageTemplate,
+      data: { brand: { logo: "javascript:alert(document.cookie)" } }
+    });
+
+    const image = result.pages[0].children.find((child) => child.type === "image");
+
+    if (!image || image.type !== "image") {
+      throw new Error("Expected rendered image node.");
+    }
+
+    expect(image.src).toBe("");
+    expect(result.warnings.some((warning) => warning.code === "image.unsafe-url")).toBe(true);
+  });
+
+  it("does not traverse prototype-pollution paths from data bindings", () => {
+    const pathTemplate: DocumentTemplate = {
+      id: "path-security",
+      version: "0.0.1",
+      unit: "px",
+      pages: [
+        {
+          id: "page-1",
+          size: PAGE_PRESETS.letter,
+          layers: [
+            {
+              id: "fixed",
+              kind: "fixed",
+              nodes: [
+                {
+                  id: "danger",
+                  type: "text",
+                  frame: { x: 40, y: 40, width: 200, height: 20 },
+                  content: [{ kind: "field", label: "Danger", binding: { path: "record.__proto__.polluted" } }],
+                  style: { fontFamily: "Inter", fontSize: 12, lineHeight: 1.2 }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+
+    const result = renderDocument({
+      template: pathTemplate,
+      data: { record: { name: "ok" } }
+    });
+
+    const text = result.pages[0].children.find((child) => child.type === "text");
+
+    if (!text || text.type !== "text") {
+      throw new Error("Expected rendered text node.");
+    }
+
+    expect(text.text).toBe("");
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+});
+
+describe("repeat headers and keep-together", () => {
+  function repeatHeaderTemplate(options: {
+    repeatHeaderOnPageBreak?: boolean;
+    keepTogether?: boolean;
+    spacerHeight?: number;
+  }): DocumentTemplate {
+    const spacer =
+      options.spacerHeight && options.spacerHeight > 0
+        ? [
+            {
+              id: "spacer",
+              type: "shape" as const,
+              shape: "rectangle" as const,
+              frame: { x: 0, y: 0, width: 480, height: options.spacerHeight },
+              style: { fill: "#eef2ff" }
+            }
+          ]
+        : [];
+
+    return {
+      id: "repeat-header",
+      version: "0.0.1",
+      unit: "px",
+      pages: [
+        {
+          id: "page-1",
+          size: PAGE_PRESETS.letter,
+          margin: { top: 40, right: 40, bottom: 40, left: 40 },
+          layers: [
+            {
+              id: "flow",
+              kind: "flow",
+              nodes: [
+                {
+                  id: "body",
+                  type: "flowRegion",
+                  frame: { x: 40, y: 40, width: 480, height: 900 },
+                  flowBoundary: "page-margin",
+                  children: [
+                    ...spacer,
+                    {
+                      id: "rows",
+                      type: "repeat",
+                      frame: { x: 0, y: 0, width: 480, height: 40 },
+                      binding: { path: "list" },
+                      itemAlias: "item",
+                      layout: {
+                        direction: "vertical",
+                        gap: 0,
+                        repeatHeaderOnPageBreak: options.repeatHeaderOnPageBreak,
+                        keepTogether: options.keepTogether
+                      },
+                      header: [
+                        {
+                          id: "hdr",
+                          type: "text",
+                          frame: { x: 0, y: 0, width: 480, height: 24 },
+                          content: [{ kind: "text", text: "COLUMN HEADER" }],
+                          style: { fontFamily: "Inter", fontSize: 12, lineHeight: 1 }
+                        }
+                      ],
+                      children: [
+                        {
+                          id: "row-label",
+                          type: "text",
+                          frame: { x: 0, y: 0, width: 480, height: 40 },
+                          content: [{ kind: "field", label: "Row", binding: { path: "item.label" } }],
+                          style: { fontFamily: "Inter", fontSize: 12, lineHeight: 1 }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+  }
+
+  function countHeaderPages(result: ReturnType<typeof renderDocument>): number {
+    return result.pages.filter((page) =>
+      page.children.some((child) => child.type === "text" && child.text === "COLUMN HEADER")
+    ).length;
+  }
+
+  const manyRows = { list: Array.from({ length: 60 }, (_, index) => ({ label: `Row ${index + 1}` })) };
+
+  it("repeats the header on every continuation page when enabled", () => {
+    const result = renderDocument({
+      template: repeatHeaderTemplate({ repeatHeaderOnPageBreak: true }),
+      data: manyRows
+    });
+
+    expect(result.pages.length).toBeGreaterThan(1);
+    expect(countHeaderPages(result)).toBe(result.pages.length);
+  });
+
+  it("draws the header only once when repeat-on-break is off", () => {
+    const result = renderDocument({
+      template: repeatHeaderTemplate({}),
+      data: manyRows
+    });
+
+    expect(result.pages.length).toBeGreaterThan(1);
+    expect(countHeaderPages(result)).toBe(1);
+  });
+
+  it("keeps a small repeat block together on a fresh page", () => {
+    // A tall spacer before the repeat means it cannot fit at the bottom.
+    const template = repeatHeaderTemplate({ keepTogether: true, spacerHeight: 860 });
+
+    const result = renderDocument({
+      template,
+      data: { list: Array.from({ length: 4 }, (_, index) => ({ label: `Row ${index + 1}` })) }
+    });
+
+    expect(result.pages.length).toBe(2);
+    // All four rows land on page 2 together rather than splitting across pages.
+    const page2Rows = result.pages[1].children.filter(
+      (child) => child.type === "text" && /^Row /.test(child.text)
+    );
+    expect(page2Rows).toHaveLength(4);
   });
 });
