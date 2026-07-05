@@ -65,10 +65,21 @@ Current renderer features:
 
 Start here:
 
+- [Architecture blog](docs/architecture-blog.md)
+- [The Templara package architecture](docs/package-architecture-blog.md)
+- [Building a visual data binding UX](docs/visual-data-binding-ux-blog.md)
+- [The editor is not the renderer](docs/editor-is-not-renderer-blog.md)
+- [Building a Figma-inspired document rendering engine in React](docs/figma-inspired-document-rendering-engine-react-blog.md)
+- [How I designed a graph-based layout engine for dynamic PDFs](docs/graph-based-layout-engine-dynamic-pdfs-blog.md)
+- [Creating a custom document engine instead of using HTML templates](docs/custom-document-engine-over-html-templates-blog.md)
 - [Product and system overview](docs/product-system-overview.md)
 - [Project context and roadmap](docs/project-context-and-roadmap.md)
 - [Architecture notes](docs/architecture.md)
 - [100 percent execution plan](docs/100-percent-execution-plan.md)
+
+The architecture blog is the narrative version: what Templara is, what we built, the key architecture decisions, and code samples from the system.
+
+The focused blog posts break down the package architecture, visual data binding UX, the editor/renderer split, the React rendering surface, the dynamic PDF layout engine, and the custom document-engine decision as separate engineering stories.
 
 The overview explains what Templara is, how the editor/renderer split works, the package architecture, the document model, and the long-term product direction.
 

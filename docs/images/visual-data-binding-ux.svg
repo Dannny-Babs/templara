@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" fill="none">
+  <rect width="1200" height="760" fill="#fffdf7"/>
+  <text x="60" y="72" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="800" fill="#111827">Visual data binding UX</text>
+  <text x="62" y="108" font-family="Inter, Arial, sans-serif" font-size="16" fill="#475569">Make structured data visible, contextual, and safe to bind.</text>
+
+  <rect x="80" y="170" width="260" height="92" rx="14" fill="#eef6ff" stroke="#2563eb" stroke-width="3"/>
+  <text x="210" y="205" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" fill="#0f172a">Schema fields</text>
+  <text x="210" y="232" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="14" fill="#334155">declared contract</text>
+
+  <rect x="80" y="315" width="260" height="92" rx="14" fill="#ecfdf5" stroke="#059669" stroke-width="3"/>
+  <text x="210" y="350" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" fill="#0f172a">Sample data</text>
+  <text x="210" y="377" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="14" fill="#334155">real preview values</text>
+
+  <rect x="80" y="460" width="260" height="92" rx="14" fill="#fef3c7" stroke="#d97706" stroke-width="3"/>
+  <text x="210" y="495" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" fill="#0f172a">Repeat scope</text>
+  <text x="210" y="522" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="14" fill="#334155">item fields in context</text>
+
+  <rect x="80" y="605" width="260" height="92" rx="14" fill="#fff7ed" stroke="#ea580c" stroke-width="3"/>
+  <text x="210" y="640" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="800" fill="#0f172a">Variables</text>
+  <text x="210" y="667" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="14" fill="#334155">computed document values</text>
+
+  <rect x="485" y="305" width="260" height="150" rx="18" fill="#f8fafc" stroke="#64748b" stroke-width="3"/>
+  <text x="615" y="346" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="800" fill="#0f172a">Data explorer</text>
+  <text x="615" y="376" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="15" fill="#334155">groups fields</text>
+  <text x="615" y="404" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="15" fill="#334155">filters by selected node</text>
+  <text x="615" y="432" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="15" fill="#334155">shows bindable targets</text>
+
+  <rect x="875" y="205" width="245" height="88" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="3"/>
+  <text x="998" y="240" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="800" fill="#0f172a">Text node</text>
+  <text x="998" y="266" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="14" fill="#334155">{{business.name}}</text>
+
+  <rect x="875" y="340" width="245" height="88" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="3"/>
+  <text x="998" y="375" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="800" fill="#0f172a">Repeat node</text>
+  <text x="998" y="401" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="14" fill="#334155">shipment.handlingUnits[]</text>
+
+  <rect x="875" y="475" width="245" height="88" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="3"/>
+  <text x="998" y="510" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="800" fill="#0f172a">Barcode / QR</text>
+  <text x="998" y="536" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="14" fill="#334155">shipment.bolNumber</text>
+
+  <defs>
+    <marker id="arrow3" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2 2L10 6L2 10" stroke="#334155" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+  <path d="M340 216 C405 240 440 295 485 340" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow3)"/>
+  <path d="M340 361 C400 365 430 372 482 380" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow3)"/>
+  <path d="M340 506 C405 480 440 435 485 405" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow3)"/>
+  <path d="M340 651 C430 590 470 490 515 455" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow3)"/>
+  <path d="M745 360 C800 320 830 280 875 250" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow3)"/>
+  <path d="M745 380 C800 380 825 382 875 384" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow3)"/>
+  <path d="M745 405 C805 430 835 485 875 519" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow3)"/>
+</svg>

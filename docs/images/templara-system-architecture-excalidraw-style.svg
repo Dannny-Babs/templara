@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040" fill="none">
+  <rect width="1600" height="1040" fill="#fffdf7"/>
+
+  <defs>
+    <marker id="arrow-main" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2 2L10 6L2 10" stroke="#111111" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrow-blueprint" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2 2L10 6L2 10" stroke="#334155" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <!-- dashed swimlanes -->
+  <rect x="18" y="18" width="260" height="1004" rx="12" stroke="#3f3f3f" stroke-width="2" stroke-dasharray="9 11"/>
+  <rect x="318" y="18" width="280" height="1004" rx="12" stroke="#3f3f3f" stroke-width="2" stroke-dasharray="9 11"/>
+  <rect x="638" y="18" width="660" height="1004" rx="12" stroke="#3f3f3f" stroke-width="2" stroke-dasharray="9 11"/>
+  <rect x="1338" y="18" width="244" height="1004" rx="12" stroke="#3f3f3f" stroke-width="2" stroke-dasharray="9 11"/>
+
+  <text x="148" y="70" text-anchor="middle" font-family="'Comic Sans MS', 'Virgil', 'Segoe Print', monospace" font-size="22" font-weight="700" fill="#3b63ff">Studio Authoring</text>
+  <text x="148" y="99" text-anchor="middle" font-family="'Comic Sans MS', 'Virgil', 'Segoe Print', monospace" font-size="22" font-weight="700" fill="#3b63ff">Surface</text>
+
+  <text x="458" y="70" text-anchor="middle" font-family="'Comic Sans MS', 'Virgil', 'Segoe Print', monospace" font-size="22" font-weight="700" fill="#3b63ff">Document</text>
+  <text x="458" y="99" text-anchor="middle" font-family="'Comic Sans MS', 'Virgil', 'Segoe Print', monospace" font-size="22" font-weight="700" fill="#3b63ff">Authoring Core</text>
+
+  <text x="968" y="70" text-anchor="middle" font-family="'Comic Sans MS', 'Virgil', 'Segoe Print', monospace" font-size="22" font-weight="700" fill="#3b63ff">Templara Renderer</text>
+  <text x="968" y="99" text-anchor="middle" font-family="'Comic Sans MS', 'Virgil', 'Segoe Print', monospace" font-size="22" font-weight="700" fill="#3b63ff">and Export Runtime</text>
+
+  <text x="1460" y="70" text-anchor="middle" font-family="'Comic Sans MS', 'Virgil', 'Segoe Print', monospace" font-size="22" font-weight="700" fill="#3b63ff">Embed and</text>
+  <text x="1460" y="99" text-anchor="middle" font-family="'Comic Sans MS', 'Virgil', 'Segoe Print', monospace" font-size="22" font-weight="700" fill="#3b63ff">Platform Layer</text>
+
+  <!-- left lane cards -->
+  <rect x="36" y="150" width="224" height="160" rx="14" fill="#f8f5eb" stroke="#6f6658" stroke-width="2"/>
+  <text x="148" y="222" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="700" fill="#111111">Figma-like</text>
+  <text x="148" y="252" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="21" font-weight="700" fill="#111111">Template Canvas</text>
+
+  <rect x="36" y="338" width="224" height="190" rx="14" fill="#f8f5eb" stroke="#6f6658" stroke-width="2"/>
+  <text x="148" y="410" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Layers, Inspector,</text>
+  <text x="148" y="438" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Guides, Rulers,</text>
+  <text x="148" y="466" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Snapping</text>
+
+  <rect x="36" y="556" width="224" height="170" rx="14" fill="#f8f5eb" stroke="#6f6658" stroke-width="2"/>
+  <text x="148" y="626" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Data Explorer</text>
+  <text x="148" y="654" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="18" fill="#111111">schema, sample data,</text>
+  <text x="148" y="681" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="18" fill="#111111">scope, variables</text>
+
+  <rect x="36" y="754" width="224" height="220" rx="14" fill="#f8f5eb" stroke="#6f6658" stroke-width="2"/>
+  <text x="148" y="838" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Preview Debug</text>
+  <text x="148" y="866" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="18" fill="#111111">warnings, page breaks,</text>
+  <text x="148" y="893" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="18" fill="#111111">repeat fit, overflow</text>
+
+  <!-- document core lane -->
+  <rect x="344" y="208" width="228" height="94" fill="#ffffff" stroke="#5d5650" stroke-width="2"/>
+  <text x="458" y="247" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Editor Page</text>
+  <text x="458" y="274" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Model</text>
+
+  <rect x="344" y="420" width="228" height="112" fill="#e7e5e4" stroke="#5d5650" stroke-width="2"/>
+  <text x="458" y="468" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Template JSON</text>
+  <text x="458" y="496" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="18" fill="#111111">source of truth</text>
+
+  <rect x="344" y="660" width="228" height="94" fill="#ffffff" stroke="#5d5650" stroke-width="2"/>
+  <text x="458" y="700" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Binding and</text>
+  <text x="458" y="727" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Logic Rules</text>
+
+  <!-- central renderer lane -->
+  <rect x="690" y="126" width="230" height="94" fill="#cfe7ff" stroke="#4a4a4a" stroke-width="2"/>
+  <text x="805" y="164" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Validate and</text>
+  <text x="805" y="192" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Normalize</text>
+
+  <rect x="690" y="256" width="230" height="84" fill="#cfe7ff" stroke="#4a4a4a" stroke-width="2"/>
+  <text x="805" y="292" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Resolve Bindings</text>
+  <text x="805" y="319" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="18" fill="#111111">and Variables</text>
+
+  <rect x="690" y="374" width="230" height="84" fill="#cfe7ff" stroke="#4a4a4a" stroke-width="2"/>
+  <text x="805" y="410" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Expand Repeats</text>
+  <text x="805" y="437" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="18" fill="#111111">and Logic</text>
+
+  <rect x="690" y="492" width="230" height="84" fill="#cfe7ff" stroke="#4a4a4a" stroke-width="2"/>
+  <text x="805" y="528" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Measure and</text>
+  <text x="805" y="555" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Paginate</text>
+
+  <path d="M805 608 L875 678 L805 748 L735 678 Z" fill="#fff0c4" stroke="#6f6658" stroke-width="2"/>
+  <text x="805" y="672" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Export</text>
+  <text x="805" y="700" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Ready?</text>
+
+  <rect x="684" y="808" width="242" height="76" fill="#f3caca" stroke="#6f6658" stroke-width="2"/>
+  <text x="805" y="839" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="700" fill="#111111">Diagnostics and</text>
+  <text x="805" y="866" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="700" fill="#111111">Warnings</text>
+
+  <rect x="678" y="910" width="258" height="82" fill="#cfe7ff" stroke="#b57933" stroke-width="2" stroke-dasharray="8 8"/>
+  <text x="807" y="944" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="700" fill="#111111">Render Tree</text>
+  <text x="807" y="970" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="17" fill="#111111">pages + nodes + debug boxes</text>
+
+  <!-- right side stores / outputs -->
+  <path d="M1065 132 C1118 132 1160 153 1160 178 L1160 242 C1160 268 1118 288 1065 288 C1012 288 970 268 970 242 L970 178 C970 153 1012 132 1065 132 Z" fill="#ffffff" stroke="#087a31" stroke-width="5"/>
+  <ellipse cx="1065" cy="178" rx="95" ry="46" fill="#ffffff" stroke="#087a31" stroke-width="5"/>
+  <text x="1065" y="183" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="700" fill="#111111">Template DB</text>
+  <text x="1065" y="332" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700" fill="#111111">Saved Templates</text>
+
+  <path d="M1065 446 C1118 446 1160 467 1160 492 L1160 562 C1160 588 1118 608 1065 608 C1012 608 970 588 970 562 L970 492 C970 467 1012 446 1065 446 Z" fill="#ffffff" stroke="#087a31" stroke-width="5"/>
+  <ellipse cx="1065" cy="492" rx="95" ry="46" fill="#ffffff" stroke="#087a31" stroke-width="5"/>
+  <text x="1065" y="666" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700" fill="#111111">Sample Data</text>
+  <text x="1065" y="694" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700" fill="#111111">and Assets</text>
+
+  <rect x="1018" y="790" width="210" height="74" fill="#cfe7ff" stroke="#4a4a4a" stroke-width="2"/>
+  <text x="1123" y="821" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">React Preview</text>
+  <text x="1123" y="848" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="17" fill="#111111">DOM/SVG pages</text>
+
+  <rect x="1018" y="910" width="210" height="74" fill="#cfe7ff" stroke="#4a4a4a" stroke-width="2"/>
+  <text x="1123" y="941" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">PDF Export</text>
+  <text x="1123" y="968" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="17" fill="#111111">browser first</text>
+
+  <!-- platform lane -->
+  <rect x="1356" y="150" width="208" height="190" rx="14" fill="#f8f5eb" stroke="#6f6658" stroke-width="2"/>
+  <text x="1460" y="224" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Embedded</text>
+  <text x="1460" y="252" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Renderer</text>
+
+  <rect x="1356" y="386" width="208" height="190" rx="14" fill="#f8f5eb" stroke="#6f6658" stroke-width="2"/>
+  <text x="1460" y="460" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Template</text>
+  <text x="1460" y="488" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Library</text>
+
+  <rect x="1356" y="622" width="208" height="190" rx="14" fill="#f8f5eb" stroke="#6f6658" stroke-width="2"/>
+  <text x="1460" y="696" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">CLI / Render</text>
+  <text x="1460" y="724" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Service</text>
+
+  <rect x="1356" y="858" width="208" height="116" rx="14" fill="#f8f5eb" stroke="#6f6658" stroke-width="2"/>
+  <text x="1460" y="906" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Observability</text>
+  <text x="1460" y="934" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="18" fill="#111111">warnings + exports</text>
+
+  <!-- dashed subregion in renderer lane -->
+  <rect x="660" y="760" width="602" height="250" fill="none" stroke="#b57933" stroke-width="2" stroke-dasharray="8 8"/>
+  <text x="958" y="786" text-anchor="middle" font-family="'Comic Sans MS', 'Virgil', 'Segoe Print', monospace" font-size="18" font-weight="700" fill="#3b63ff">Preview / Export Surface</text>
+
+  <!-- arrows -->
+  <path d="M260 230 L344 252" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M260 640 L344 707" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M458 302 L458 420" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M458 532 L458 660" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M572 476 L690 174" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M572 706 L690 298" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+
+  <path d="M805 220 L805 256" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M805 340 L805 374" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M805 458 L805 492" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M805 576 L805 608" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M805 748 L805 808" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M875 678 L1018 827" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <text x="934" y="708" font-family="Inter, Arial, sans-serif" font-size="16" fill="#111111">Yes</text>
+  <path d="M805 884 L805 910" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <text x="765" y="790" font-family="Inter, Arial, sans-serif" font-size="16" fill="#111111">No</text>
+
+  <path d="M920 174 L970 178" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <text x="930" y="158" font-family="Inter, Arial, sans-serif" font-size="15" fill="#111111">load</text>
+  <path d="M970 492 L920 534" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <text x="925" y="505" font-family="Inter, Arial, sans-serif" font-size="15" fill="#111111">data</text>
+  <path d="M1228 827 L1356 245" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M1228 947 L1356 717" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M1228 947 L1356 916" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M1228 827 L1356 481" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+
+  <path d="M1123 864 L1123 910" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M936 951 L1018 947" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+  <path d="M926 846 L1018 827" stroke="#111111" stroke-width="2.2" marker-end="url(#arrow-main)"/>
+</svg>
