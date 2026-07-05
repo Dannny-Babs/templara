@@ -555,6 +555,62 @@ describe("renderDocument", () => {
     expect(result.warnings.some((warning) => warning.code === "layout.page_break")).toBe(true);
   });
 
+  it("omits repeated grid headers when the header and next row cannot fit together", () => {
+    const gridTemplate: DocumentTemplate = {
+      id: "grid-tight-continuation",
+      version: "0.0.1",
+      unit: "px",
+      pages: [
+        {
+          id: "page-1",
+          size: { width: 300, height: 180 },
+          margin: { top: 50, right: 20, bottom: 50, left: 20 },
+          layers: [
+            {
+              id: "flow",
+              kind: "flow",
+              nodes: [
+                {
+                  id: "body",
+                  type: "flowRegion",
+                  frame: { x: 20, y: 20, width: 260, height: 140 },
+                  children: [
+                    createItemsGrid({
+                      rowHeight: 70,
+                      behavior: { repeatHeaderOnPageBreak: true }
+                    })
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+
+    const result = renderDocument({
+      template: gridTemplate,
+      data: {
+        invoice: {
+          items: Array.from({ length: 3 }, (_, index) => ({
+            name: `Grid Item ${index + 1}`,
+            total: index + 1
+          }))
+        }
+      }
+    });
+
+    const pageTexts = result.pages.map((page) =>
+      page.children.filter((node) => node.type === "text").map((node) => node.text)
+    );
+
+    expect(result.pages.length).toBeGreaterThan(1);
+    expect(pageTexts[0]).toContain("NAME");
+    expect(pageTexts[0]).toContain("Grid Item 1");
+    expect(pageTexts.slice(1).every((texts) => !texts.includes("NAME"))).toBe(true);
+    expect(pageTexts.slice(1).every((texts) => texts.some((text) => /^Grid Item /.test(text)))).toBe(true);
+  });
+
   it("keeps semantic sections together when they do not fit the remaining flow space", () => {
     const sectionTemplate = structuredClone(template) as DocumentTemplate;
     const flowRegion = sectionTemplate.pages[0].layers[1].nodes[0];
@@ -1538,7 +1594,7 @@ describe("security", () => {
 
     const result = renderDocument({
       template: pathTemplate,
-      data: { record: { name: "ok" } }
+      data: { record: { name: "ok", polluted: "wrong alias" } }
     });
 
     const text = result.pages[0].children.find((child) => child.type === "text");
@@ -1548,6 +1604,7 @@ describe("security", () => {
     }
 
     expect(text.text).toBe("");
+    expect(result.warnings.some((warning) => warning.code === "binding.unsafe_path")).toBe(true);
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 });
@@ -1676,5 +1733,80 @@ describe("repeat headers and keep-together", () => {
       (child) => child.type === "text" && /^Row /.test(child.text)
     );
     expect(page2Rows).toHaveLength(4);
+  });
+
+  it("omits repeated continuation headers when the header and next row cannot fit together", () => {
+    const template: DocumentTemplate = {
+      id: "repeat-header-tight-continuation",
+      version: "0.0.1",
+      unit: "px",
+      pages: [
+        {
+          id: "page-1",
+          size: { width: 300, height: 180 },
+          margin: { top: 50, right: 20, bottom: 50, left: 20 },
+          layers: [
+            {
+              id: "flow",
+              kind: "flow",
+              nodes: [
+                {
+                  id: "body",
+                  type: "flowRegion",
+                  frame: { x: 20, y: 20, width: 260, height: 140 },
+                  children: [
+                    {
+                      id: "rows",
+                      type: "repeat",
+                      frame: { x: 0, y: 0, width: 260, height: 70 },
+                      binding: { path: "list" },
+                      itemAlias: "item",
+                      layout: {
+                        direction: "vertical",
+                        gap: 0,
+                        repeatHeaderOnPageBreak: true
+                      },
+                      header: [
+                        {
+                          id: "hdr",
+                          type: "text",
+                          frame: { x: 0, y: 0, width: 260, height: 40 },
+                          content: [{ kind: "text", text: "COLUMN HEADER" }],
+                          style: { fontFamily: "Inter", fontSize: 12, lineHeight: 1 }
+                        }
+                      ],
+                      children: [
+                        {
+                          id: "row-label",
+                          type: "text",
+                          frame: { x: 0, y: 0, width: 260, height: 70 },
+                          content: [{ kind: "field", label: "Row", binding: { path: "item.label" } }],
+                          style: { fontFamily: "Inter", fontSize: 12, lineHeight: 1 }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+
+    const result = renderDocument({
+      template,
+      data: { list: Array.from({ length: 3 }, (_, index) => ({ label: `Row ${index + 1}` })) }
+    });
+
+    const pageTexts = result.pages.map((page) =>
+      page.children.filter((node) => node.type === "text").map((node) => node.text)
+    );
+
+    expect(result.pages.length).toBeGreaterThan(1);
+    expect(pageTexts[0]).toContain("COLUMN HEADER");
+    expect(pageTexts[0]).toContain("Row 1");
+    expect(pageTexts.slice(1).every((texts) => !texts.includes("COLUMN HEADER"))).toBe(true);
+    expect(pageTexts.slice(1).every((texts) => texts.some((text) => /^Row /.test(text)))).toBe(true);
   });
 });

@@ -647,10 +647,17 @@ function renderRepeatNode(
 
   for (const row of rows) {
     if (hasHeader && node.layout.repeatHeaderOnPageBreak) {
+      const repeatedHeaderBlockHeight = repeatHeaderBlockHeight(
+        headerHeight,
+        node.layout.gap,
+        row.height
+      );
       const candidate = ensureFlowSpace(state, context, nextCursor, row.height, node.id);
 
       if (candidate.pageIndex !== nextCursor.pageIndex) {
-        nextCursor = renderRepeatHeaderRow(state, candidate, node, headerChildren, headerHeight, scope, origin);
+        nextCursor = canFitOnContinuationPage(context, repeatedHeaderBlockHeight)
+          ? renderRepeatHeaderRow(state, candidate, node, headerChildren, headerHeight, scope, origin)
+          : candidate;
         nextCursor = renderRepeatRow(state, context, nextCursor, node, row, origin);
         continue;
       }
@@ -670,6 +677,14 @@ function repeatBlockHeight(
 ): number {
   const rowsHeight = rows.reduce((sum, row, index) => sum + row.height + (index > 0 ? gap : 0), 0);
   return (hasHeader ? headerHeight + gap : 0) + rowsHeight;
+}
+
+function repeatHeaderBlockHeight(
+  headerHeight: number,
+  gap: number,
+  rowHeight: number
+): number {
+  return headerHeight + gap + rowHeight;
 }
 
 function renderRepeatHeaderRow(
@@ -1113,10 +1128,16 @@ function renderGridNode(
   }
 
   for (const row of bodyRows) {
+    const repeatedHeaderBlockHeight =
+      headerRow && node.behavior?.repeatHeaderOnPageBreak
+        ? headerRow.height + row.height
+        : row.height;
     const candidate = ensureGridRowSpace(state, context, nextCursor, node, row, origin);
 
     if (candidate.pageIndex !== nextCursor.pageIndex && headerRow && node.behavior?.repeatHeaderOnPageBreak) {
-      nextCursor = renderGridRowAtCursor(state, context, candidate, node, headerRow, origin);
+      nextCursor = canFitOnContinuationPage(context, repeatedHeaderBlockHeight)
+        ? renderGridRowAtCursor(state, context, candidate, node, headerRow, origin)
+        : candidate;
       nextCursor = renderGridRowAtCursor(state, context, nextCursor, node, row, origin);
       continue;
     }
@@ -1608,6 +1629,14 @@ function ensureFlowSpace(
   });
 
   return nextCursor;
+}
+
+function canFitOnContinuationPage(
+  context: FlowContext,
+  requiredHeight: number
+): boolean {
+  const continuationHeight = context.continuationBottom - context.continuationTop;
+  return requiredHeight <= continuationHeight + LAYOUT_EPSILON;
 }
 
 function forceFlowPageBreak(
@@ -2306,7 +2335,17 @@ function valueContains(value: unknown, needle: unknown): boolean {
 }
 
 function resolvePath(path: string, state: RenderState, scope: Scope): unknown {
-  const [root, ...rest] = normalizePath(path);
+  const normalizedPath = normalizePath(path);
+
+  if (normalizedPath.unsafeSegment) {
+    state.warnings.push({
+      code: "binding.unsafe_path",
+      message: `Rejected unsafe binding path "${path}" because it contains "${normalizedPath.unsafeSegment}".`
+    });
+    return undefined;
+  }
+
+  const [root, ...rest] = normalizedPath.parts;
 
   if (!root) {
     return undefined;
@@ -2506,7 +2545,17 @@ function resolveFormulaNumber(
 }
 
 function resolveFormulaPathValues(path: string, state: RenderState, scope: Scope): unknown[] {
-  const [root, ...rest] = normalizePath(path);
+  const normalizedPath = normalizePath(path);
+
+  if (normalizedPath.unsafeSegment) {
+    state.warnings.push({
+      code: "formula.unsafe_path",
+      message: `Rejected unsafe formula path "${path}" because it contains "${normalizedPath.unsafeSegment}".`
+    });
+    return [];
+  }
+
+  const [root, ...rest] = normalizedPath.parts;
 
   if (!root) {
     return [];
@@ -2557,14 +2606,19 @@ function collectPathValues(value: unknown, parts: string[]): unknown[] {
   return collectPathValues((value as Record<string, unknown>)[part], rest);
 }
 
-function normalizePath(path: string): string[] {
-  return path
+function normalizePath(path: string): {
+  parts: string[];
+  unsafeSegment?: string;
+} {
+  const parts = path
     .replace(/\[(\d+)\]/g, ".$1")
     .replace(/\[\]/g, "")
     .split(".")
     .map((part) => part.trim())
-    .filter(Boolean)
-    .filter(isSafePathSegment);
+    .filter(Boolean);
+  const unsafeSegment = parts.find((part) => !isSafePathSegment(part));
+
+  return unsafeSegment ? { parts: [], unsafeSegment } : { parts };
 }
 
 const UNSAFE_PATH_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
