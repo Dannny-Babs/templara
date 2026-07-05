@@ -157,6 +157,13 @@ export interface ShapeNode extends BaseNode {
   type: "shape";
   shape: "rectangle" | "ellipse" | "line";
   style: ShapeStyle;
+  /**
+   * Optional children so shapes (typically rectangles/ellipses) can act as
+   * containers/backgrounds. Children are positioned relative to the shape's
+   * top-left corner, mirroring `group` semantics, and paint on top of the
+   * shape fill/stroke.
+   */
+  children?: FlowNode[];
 }
 
 export interface ShapeStyle {
@@ -234,6 +241,12 @@ export interface RepeatNode extends BaseNode {
   itemAlias: string;
   layout: RepeatLayout;
   children: FlowNode[];
+  /**
+   * Optional static header row rendered above the repeated rows. When
+   * `layout.repeatHeaderOnPageBreak` is set the header is re-drawn at the top
+   * of every continuation page the repeat flows onto.
+   */
+  header?: FlowNode[];
   emptyState?: FlowNode[];
 }
 
@@ -246,6 +259,13 @@ export interface RepeatLayout {
   maxCompressionRatio?: number;
   fillAvailableSpace?: boolean;
   maxExpansionRatio?: number;
+  /** Re-draw {@link RepeatNode.header} at the top of each continuation page. */
+  repeatHeaderOnPageBreak?: boolean;
+  /**
+   * Keep the whole repeat block (header + all rows) on a single page when it
+   * does not fit from the current position but would fit on a fresh page.
+   */
+  keepTogether?: boolean;
 }
 
 export interface ConditionalNode extends BaseNode {
@@ -366,3 +386,7 @@ export interface DataField {
   kind: "string" | "number" | "boolean" | "date" | "array" | "object" | "image" | "unknown";
   children?: DataField[];
 }
+
+export * from "./validation";
+export * from "./migration";
+export * from "./logic";
