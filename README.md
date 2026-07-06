@@ -45,6 +45,7 @@ Current editor features:
 - searchable data panel
 - contextual right inspector
 - table/grid groups with static rows and bound column authoring
+- direct grid cell targeting and column boundary resizing on canvas
 - grid, rulers, guides, and snapping controls
 - unified diagnostics badge and dock
 - bottom-left canvas dock
@@ -79,6 +80,7 @@ Start here:
 - [Project context and roadmap](docs/project-context-and-roadmap.md)
 - [Architecture notes](docs/architecture.md)
 - [100 percent execution plan](docs/100-percent-execution-plan.md)
+- [Launch readiness checklist](docs/launch-readiness.md)
 
 The architecture blog is the narrative version: what Templara is, what we built, the key architecture decisions, and code samples from the system.
 
@@ -89,6 +91,8 @@ The overview explains what Templara is, how the editor/renderer split works, the
 The context/roadmap doc summarizes what has been built in this chat and what remains.
 
 The 100 percent execution plan is the principal-level handoff for another agent. It defines progress, system architecture, algorithms, milestones, acceptance criteria, and the exact continuation order.
+
+The launch readiness checklist defines what is demo-ready now, what still carries risk, and the verification gate before calling the product launchable.
 
 ## Workspace
 
@@ -147,7 +151,7 @@ pnpm run build
 ## Known Near-Term Work
 
 - Harden import/export project bundle UX and add more malformed-bundle tests.
-- Expand table editing into direct cell selection, row operations, and column drag resizing.
+- Harden table editing with richer row/column keyboard commands and clearer cell-context inspector affordances.
 - Add richer diagnostics navigation for validation paths that do not map to a node.
 - Move local project persistence behind an IndexedDB/server-ready adapter when binary assets arrive.
 - Prepare npm publishing metadata once package APIs stabilize.

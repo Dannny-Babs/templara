@@ -120,7 +120,7 @@ import {
   createEditorClipboard,
   pasteEditorClipboardNodes,
 } from "./editorClipboard";
-import { addGridColumn, bindGridColumn } from "./gridModel";
+import { addGridColumn, bindGridColumn, setGridColumnWidth } from "./gridModel";
 import { inferDataSchemaFromSample } from "./schemaAuthoring";
 import type { InsertTool } from "./shortcuts";
 import { resolveEditorShortcut } from "./shortcuts";
@@ -212,6 +212,23 @@ interface ResizeState {
   startFrame: Frame;
   startTemplate: DocumentTemplate;
   historyRecorded: boolean;
+}
+
+interface GridColumnResizeState {
+  gridId: string;
+  columnId: string;
+  startClientX: number;
+  startWidth: number;
+  startTemplate: DocumentTemplate;
+  historyRecorded: boolean;
+  lastWidth: number;
+}
+
+interface GridCellSelection {
+  gridId: string;
+  rowKind: "header" | "row" | "footer";
+  rowIndex: number;
+  columnId: string;
 }
 
 interface ActiveGuide {
@@ -341,11 +358,14 @@ export function DocumentEditor({
   const [editingTextNodeId, setEditingTextNodeId] = useState<string | null>(
     null,
   );
+  const [selectedGridCell, setSelectedGridCell] =
+    useState<GridCellSelection | null>(null);
   const [collapsedLayerIds, setCollapsedLayerIds] = useState<
     ReadonlySet<string>
   >(() => new Set());
   const dragState = useRef<DragState | null>(null);
   const resizeState = useRef<ResizeState | null>(null);
+  const gridColumnResizeState = useRef<GridColumnResizeState | null>(null);
   const guideDragState = useRef<GuideDragState | null>(null);
   const historyTransaction = useRef<HistoryTransaction | null>(null);
   const editorClipboard = useRef<EditorClipboard | undefined>(undefined);
@@ -510,6 +530,21 @@ export function DocumentEditor({
   useEffect(() => {
     setSelectedNodeIds((ids) => ids.filter((id) => itemLookup.has(id)));
   }, [itemLookup]);
+
+  useEffect(() => {
+    setSelectedGridCell((cell) => {
+      if (!cell || selectedNodeIds.length !== 1 || selectedNodeIds[0] !== cell.gridId) {
+        return null;
+      }
+
+      const item = itemLookup.get(cell.gridId);
+      if (!item || item.node.type !== "grid") {
+        return null;
+      }
+
+      return cell;
+    });
+  }, [itemLookup, selectedNodeIds]);
 
   useEffect(() => {
     dispatchInspectorUi({
@@ -1036,6 +1071,51 @@ export function DocumentEditor({
         return;
       }
 
+      const gridColumnResize = gridColumnResizeState.current;
+
+      if (gridColumnResize) {
+        event.preventDefault();
+
+        const deltaX = (event.clientX - gridColumnResize.startClientX) / zoom;
+        const nextWidth = Math.max(
+          24,
+          snapCoordinate(gridColumnResize.startWidth + deltaX, snapToGrid),
+        );
+
+        if (nextWidth === gridColumnResize.lastWidth) {
+          return;
+        }
+
+        if (!gridColumnResize.historyRecorded) {
+          setHistoryPast((past) =>
+            [...past, structuredClone(gridColumnResize.startTemplate)].slice(-80),
+          );
+          setHistoryFuture([]);
+          historyTransaction.current = null;
+          gridColumnResize.historyRecorded = true;
+        }
+
+        const nextTemplate = structuredClone(gridColumnResize.startTemplate);
+
+        if (
+          updateNodeById(nextTemplate, gridColumnResize.gridId, (node) => {
+            if (node.type === "grid") {
+              setGridColumnWidth(
+                node,
+                gridColumnResize.columnId,
+                nextWidth,
+              );
+            }
+          })
+        ) {
+          gridColumnResize.lastWidth = nextWidth;
+          setDraftTemplate(nextTemplate);
+          onChange?.(nextTemplate);
+        }
+
+        return;
+      }
+
       const resize = resizeState.current;
 
       if (resize) {
@@ -1131,6 +1211,7 @@ export function DocumentEditor({
     function handlePointerUp(): void {
       dragState.current = null;
       resizeState.current = null;
+      gridColumnResizeState.current = null;
       guideDragState.current = null;
       setActiveGuides([]);
     }
@@ -1145,6 +1226,7 @@ export function DocumentEditor({
   }, [
     horizontalGuides,
     nodeItems,
+    onChange,
     pageModel.size,
     snapToGrid,
     snapToGuides,
@@ -1220,6 +1302,41 @@ export function DocumentEditor({
     },
     [draftTemplate, itemLookup, selectedNodeIds],
   );
+
+  const handleStartGridColumnResize = useCallback(
+    (
+      event: PointerEvent<HTMLElement>,
+      gridId: string,
+      columnId: string,
+      width: number,
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const item = itemLookup.get(gridId);
+      if (!item || item.node.type !== "grid" || item.node.locked === true) {
+        return;
+      }
+
+      gridColumnResizeState.current = {
+        gridId,
+        columnId,
+        startClientX: event.clientX,
+        startWidth: width,
+        startTemplate: structuredClone(draftTemplate),
+        historyRecorded: false,
+        lastWidth: width,
+      };
+      setSelectedNodeIds([gridId]);
+    },
+    [draftTemplate, itemLookup],
+  );
+
+  const handleSelectGridCell = useCallback((cell: GridCellSelection) => {
+    setSelectedNodeIds([cell.gridId]);
+    setSelectedGridCell(cell);
+    setEditingTextNodeId(null);
+  }, []);
 
   const handleLayerSelect = useCallback(
     (event: MouseEvent<HTMLElement>, nodeId: string) => {
@@ -1313,6 +1430,10 @@ export function DocumentEditor({
     (page) => page.id === activePageId,
   );
   const safeActivePageIndex = activePageIndex >= 0 ? activePageIndex : 0;
+  const selectedGridNode =
+    selectedNodeIds.length === 1 && primarySelectedItem?.node.type === "grid"
+      ? primarySelectedItem.node
+      : undefined;
 
   const createBoundTextAtPoint = useCallback(
     (field: DataExplorerField, point: Pick<Frame, "x" | "y">) => {
@@ -1594,6 +1715,8 @@ export function DocumentEditor({
         showGrid,
         showRulers,
         selectedNodeIds,
+        selectedGridNode,
+        selectedGridCell,
         editingTextNodeId,
         activeGuides,
         verticalGuides,
@@ -1601,6 +1724,8 @@ export function DocumentEditor({
         boardRef,
         onNodePointerDown: handleNodePointerDown,
         onStartResize: handleStartResize,
+        onStartGridColumnResize: handleStartGridColumnResize,
+        onSelectGridCell: handleSelectGridCell,
         onStartTextEdit: (node) => {
           const item = itemLookup.get(node.sourceNodeId);
 
@@ -2539,6 +2664,8 @@ function EditorCanvas({
   showGrid,
   showRulers,
   selectedNodeIds,
+  selectedGridNode,
+  selectedGridCell,
   editingTextNodeId,
   activeGuides,
   verticalGuides,
@@ -2546,6 +2673,8 @@ function EditorCanvas({
   boardRef,
   onNodePointerDown,
   onStartResize,
+  onStartGridColumnResize,
+  onSelectGridCell,
   onStartTextEdit,
   onTextCommit,
   onTextCancel,
@@ -2566,6 +2695,8 @@ function EditorCanvas({
   showGrid: boolean;
   showRulers: boolean;
   selectedNodeIds: string[];
+  selectedGridNode?: GridNode;
+  selectedGridCell: GridCellSelection | null;
   editingTextNodeId: string | null;
   activeGuides: ActiveGuide[];
   verticalGuides: number[];
@@ -2579,6 +2710,13 @@ function EditorCanvas({
     event: PointerEvent<HTMLElement>,
     handle: ResizeHandle,
   ) => void;
+  onStartGridColumnResize: (
+    event: PointerEvent<HTMLElement>,
+    gridId: string,
+    columnId: string,
+    width: number,
+  ) => void;
+  onSelectGridCell: (cell: GridCellSelection) => void;
   onStartTextEdit: (node: EditorRenderNode) => void;
   onTextCommit: (nodeId: string, value: string) => void;
   onTextCancel: () => void;
@@ -2720,7 +2858,11 @@ function EditorCanvas({
               selectedNodeIds.includes(node.sourceNodeId),
             ),
             zoom,
+            selectedGridNode,
+            selectedGridCell,
             onStartResize,
+            onStartGridColumnResize,
+            onSelectGridCell,
             onCopySelection,
             onPasteSelection,
             onDuplicateSelection,
@@ -2896,7 +3038,11 @@ const RESIZE_HANDLE_CURSOR: Record<ResizeHandle, string> = {
 function SelectionOverlay({
   nodes,
   zoom,
+  selectedGridNode,
+  selectedGridCell,
   onStartResize,
+  onStartGridColumnResize,
+  onSelectGridCell,
   onCopySelection,
   onPasteSelection,
   onDuplicateSelection,
@@ -2907,10 +3053,19 @@ function SelectionOverlay({
 }: {
   nodes: EditorRenderNode[];
   zoom: number;
+  selectedGridNode?: GridNode;
+  selectedGridCell: GridCellSelection | null;
   onStartResize: (
     event: PointerEvent<HTMLElement>,
     handle: ResizeHandle,
   ) => void;
+  onStartGridColumnResize: (
+    event: PointerEvent<HTMLElement>,
+    gridId: string,
+    columnId: string,
+    width: number,
+  ) => void;
+  onSelectGridCell: (cell: GridCellSelection) => void;
   onCopySelection: () => void;
   onPasteSelection: () => void;
   onDuplicateSelection: () => void;
@@ -2995,6 +3150,16 @@ function SelectionOverlay({
           })
         : null,
     ),
+    resizable && selectedGridNode
+      ? createElement(GridCellContextOverlay, {
+          renderNode: nodes[0],
+          gridNode: selectedGridNode,
+          selectedCell: selectedGridCell,
+          zoom,
+          onSelectCell: onSelectGridCell,
+          onStartColumnResize: onStartGridColumnResize,
+        })
+      : null,
     (resizable ? RESIZE_HANDLES : (["nw", "ne", "sw", "se"] as ResizeHandle[])).map(
       (handle) =>
         createElement("span", {
@@ -3013,6 +3178,207 @@ function SelectionOverlay({
         }),
     ),
   );
+}
+
+function GridCellContextOverlay({
+  renderNode,
+  gridNode,
+  selectedCell,
+  zoom,
+  onSelectCell,
+  onStartColumnResize,
+}: {
+  renderNode: EditorRenderNode;
+  gridNode: GridNode;
+  selectedCell: GridCellSelection | null;
+  zoom: number;
+  onSelectCell: (cell: GridCellSelection) => void;
+  onStartColumnResize: (
+    event: PointerEvent<HTMLElement>,
+    gridId: string,
+    columnId: string,
+    width: number,
+  ) => void;
+}): ReactElement {
+  const handleScale = zoom > 0 ? 1 / zoom : 1;
+  const rows = gridRowsForCanvasOverlay(gridNode);
+  let rowY = 0;
+  const cells: ReactElement[] = [];
+  const columnHandles: ReactElement[] = [];
+  let columnX = 0;
+
+  for (const [index, column] of gridNode.columns.entries()) {
+    columnX += column.width;
+
+    if (index < gridNode.columns.length - 1) {
+      columnHandles.push(
+        createElement("span", {
+          key: `column-handle-${column.id}`,
+          "data-templara-grid-column-resize": column.id,
+          title: `Resize ${gridColumnLabel(column)}`,
+          onPointerDown: (event: PointerEvent<HTMLElement>) =>
+            onStartColumnResize(event, gridNode.id, column.id, column.width),
+          style: {
+            ...gridColumnResizeHandleStyle,
+            left: columnX - 4,
+            height: renderNode.frame.height,
+            transform: `scaleX(${handleScale})`,
+          },
+        }),
+      );
+    }
+  }
+
+  for (const row of rows) {
+    let cellX = 0;
+
+    for (const column of gridNode.columns) {
+      const selected =
+        selectedCell?.gridId === gridNode.id &&
+        selectedCell.rowKind === row.kind &&
+        selectedCell.rowIndex === row.index &&
+        selectedCell.columnId === column.id;
+      const cell: GridCellSelection = {
+        gridId: gridNode.id,
+        rowKind: row.kind,
+        rowIndex: row.index,
+        columnId: column.id,
+      };
+
+      cells.push(
+        createElement(
+          "div",
+          {
+            key: `${row.kind}-${row.index}-${column.id}`,
+            "data-templara-grid-cell": `${row.kind}:${row.index}:${column.id}`,
+            style: {
+              ...gridCellOverlayStyle,
+              left: cellX,
+              top: rowY,
+              width: column.width,
+              height: row.height,
+              borderColor: selected
+                ? "rgba(99, 102, 241, 0.9)"
+                : "rgba(37, 99, 235, 0.24)",
+              background: selected
+                ? "rgba(99, 102, 241, 0.08)"
+                : "transparent",
+            },
+          },
+          createElement("button", {
+            type: "button",
+            title: `Select ${row.kind} cell: ${gridColumnLabel(column)}`,
+            onPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onSelectCell(cell);
+            },
+            style: {
+              ...gridCellSelectButtonStyle,
+              transform: `scale(${handleScale})`,
+              opacity: selected ? 1 : 0.38,
+            },
+          }),
+        ),
+      );
+      cellX += column.width;
+    }
+
+    rowY += row.height;
+  }
+
+  return createElement(
+    "div",
+    {
+      "data-templara-grid-cell-context": gridNode.id,
+      style: {
+        ...gridContextOverlayStyle,
+        left: 0,
+        top: 0,
+        width: renderNode.frame.width,
+        height: renderNode.frame.height,
+      },
+    },
+    cells,
+    columnHandles,
+  );
+}
+
+function gridRowsForCanvasOverlay(
+  grid: GridNode,
+): Array<{
+  kind: GridCellSelection["rowKind"];
+  index: number;
+  row: GridNode["row"];
+  height: number;
+}> {
+  const rows: Array<{
+    kind: GridCellSelection["rowKind"];
+    index: number;
+    row: GridNode["row"];
+    height: number;
+  }> = [];
+
+  if (grid.header) {
+    rows.push({
+      kind: "header",
+      index: 0,
+      row: grid.header,
+      height: measureGridRowHeightForCanvasOverlay(grid, grid.header),
+    });
+  }
+
+  const bodyRows = grid.binding
+    ? [grid.row]
+    : grid.staticRows?.length
+      ? grid.staticRows
+      : [grid.row];
+
+  for (const [index, row] of bodyRows.entries()) {
+    rows.push({
+      kind: "row",
+      index,
+      row,
+      height: measureGridRowHeightForCanvasOverlay(grid, row),
+    });
+  }
+
+  if (grid.footer) {
+    rows.push({
+      kind: "footer",
+      index: 0,
+      row: grid.footer,
+      height: measureGridRowHeightForCanvasOverlay(grid, grid.footer),
+    });
+  }
+
+  return rows;
+}
+
+function measureGridRowHeightForCanvasOverlay(
+  grid: GridNode,
+  row: GridNode["row"],
+): number {
+  const contentBottom = row.cells.reduce((bottom, cell) => {
+    const cellBottom = cell.content.reduce(
+      (max, child) => Math.max(max, child.frame.y + child.frame.height),
+      0,
+    );
+    return Math.max(bottom, cellBottom);
+  }, 0);
+
+  return Math.max(grid.rowHeight, contentBottom);
+}
+
+function gridColumnLabel(column: GridNode["columns"][number]): string {
+  if (column.label?.trim()) {
+    return column.label.trim();
+  }
+
+  return column.id
+    .replace(/[-_]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function SelectionActionButton({
@@ -6792,6 +7158,46 @@ const selectionActionButtonStyle: CSSProperties = {
   color: "#334155",
   font: `650 10px/1 ${UI_FONT_FAMILY}`,
   cursor: "pointer",
+};
+
+const gridContextOverlayStyle: CSSProperties = {
+  position: "absolute",
+  pointerEvents: "none",
+  zIndex: 19,
+};
+
+const gridCellOverlayStyle: CSSProperties = {
+  position: "absolute",
+  boxSizing: "border-box",
+  border: "1px solid rgba(37, 99, 235, 0.24)",
+  pointerEvents: "none",
+};
+
+const gridCellSelectButtonStyle: CSSProperties = {
+  position: "absolute",
+  left: 2,
+  top: 2,
+  width: 10,
+  height: 10,
+  padding: 0,
+  border: "1px solid rgba(99, 102, 241, 0.85)",
+  borderRadius: 999,
+  background: "#ffffff",
+  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.14)",
+  cursor: "cell",
+  opacity: 0.38,
+  pointerEvents: "auto",
+  transformOrigin: "left top",
+};
+
+const gridColumnResizeHandleStyle: CSSProperties = {
+  position: "absolute",
+  top: 0,
+  width: 8,
+  borderLeft: "1px solid rgba(99, 102, 241, 0.92)",
+  cursor: "col-resize",
+  pointerEvents: "auto",
+  transformOrigin: "center top",
 };
 
 const repeatPlaceholderStyle: CSSProperties = {
