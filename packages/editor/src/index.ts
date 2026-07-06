@@ -51,9 +51,11 @@ import type {
   BarcodeNode,
   ConditionalNode,
   DataField,
+  DataSchema,
   DocNode,
   DocumentTemplate,
   FlowNode,
+  FlowRegionNode,
   Frame,
   GridNode,
   GroupNode,
@@ -111,8 +113,18 @@ import {
   inspectorUiReducer,
   resolvePageInspectorDraft,
 } from "./inspector";
+import type { EditorDiagnostic, EditorDiagnosticsSummary } from "./diagnostics";
+import { buildEditorDiagnostics } from "./diagnostics";
+import type { EditorClipboard } from "./editorClipboard";
+import {
+  createEditorClipboard,
+  pasteEditorClipboardNodes,
+} from "./editorClipboard";
+import { addGridColumn, bindGridColumn } from "./gridModel";
+import { inferDataSchemaFromSample } from "./schemaAuthoring";
 import type { InsertTool } from "./shortcuts";
 import { resolveEditorShortcut } from "./shortcuts";
+import { parseInlineContent } from "./textContent";
 
 export type {
   AlignmentCommand,
@@ -155,6 +167,12 @@ export interface DocumentEditorProps {
   data?: Record<string, unknown>;
   onChange?: (nextValue: DocumentTemplate) => void;
   onDataChange?: (nextData: Record<string, unknown>) => void;
+  documentTitle?: string;
+  documentStatus?: "draft" | "dirty" | "saved";
+  onSave?: (
+    nextValue: DocumentTemplate,
+    nextData: Record<string, unknown> | undefined,
+  ) => void;
   initialPageId?: string;
   onActivePageChange?: (pageId: string) => void;
   /**
@@ -168,6 +186,13 @@ export interface DocumentEditorProps {
 type EditableNode = DocNode | FlowNode;
 type PreviewMode = "sample" | "large" | "export";
 type GuideAxis = "x" | "y";
+type DocumentBlockId =
+  | "company-header"
+  | "address-block"
+  | "line-items-table"
+  | "totals-block"
+  | "signature-block"
+  | "code-block";
 
 interface DragState {
   nodeIds: string[];
@@ -278,6 +303,9 @@ export function DocumentEditor({
   data,
   onChange,
   onDataChange,
+  documentTitle,
+  documentStatus = "draft",
+  onSave,
   initialPageId,
   onActivePageChange,
   toolbarAccessory,
@@ -309,6 +337,10 @@ export function DocumentEditor({
   const [activeGuides, setActiveGuides] = useState<ActiveGuide[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState<PreviewMode>("sample");
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [editingTextNodeId, setEditingTextNodeId] = useState<string | null>(
+    null,
+  );
   const [collapsedLayerIds, setCollapsedLayerIds] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -316,7 +348,10 @@ export function DocumentEditor({
   const resizeState = useRef<ResizeState | null>(null);
   const guideDragState = useRef<GuideDragState | null>(null);
   const historyTransaction = useRef<HistoryTransaction | null>(null);
+  const editorClipboard = useRef<EditorClipboard | undefined>(undefined);
   const boardRef = useRef<HTMLDivElement | null>(null);
+  const loadedValueIdRef = useRef(value.id);
+  const loadedInitialPageIdRef = useRef(initialPageId);
   const [inspectorWidth, setInspectorWidth] = useState(INSPECTOR_PANEL_WIDTH);
   const [dataPanelHeight, setDataPanelHeight] = useState(DATA_PANEL_DEFAULT_HEIGHT);
 
@@ -371,16 +406,29 @@ export function DocumentEditor({
   }, []);
 
   useEffect(() => {
+    const templateChanged = loadedValueIdRef.current !== value.id;
+    const pageChanged = loadedInitialPageIdRef.current !== initialPageId;
+
+    if (!templateChanged && !pageChanged) {
+      return;
+    }
+
+    loadedValueIdRef.current = value.id;
+    loadedInitialPageIdRef.current = initialPageId;
+
     const nextTemplate = structuredClone(value);
     const nextPageId = initialPageId ?? nextTemplate.pages[0]?.id ?? "";
 
-    setDraftTemplate(nextTemplate);
+    if (templateChanged) {
+      setDraftTemplate(nextTemplate);
+      setSelectedNodeIds([]);
+      setVerticalGuides([]);
+      setHorizontalGuides([]);
+      setHistoryPast([]);
+      setHistoryFuture([]);
+    }
+
     setActivePageId(nextPageId);
-    setSelectedNodeIds([]);
-    setVerticalGuides([]);
-    setHorizontalGuides([]);
-    setHistoryPast([]);
-    setHistoryFuture([]);
   }, [initialPageId, value]);
 
   useEffect(() => {
@@ -425,6 +473,15 @@ export function DocumentEditor({
       }),
     [draftData, draftTemplate, nodeItems, selectedNodeIds],
   );
+  const samplePreviewDocument = useMemo(
+    () =>
+      renderDocument({
+        template: draftTemplate,
+        data: draftData,
+        mode: "preview",
+      }),
+    [draftData, draftTemplate],
+  );
   const previewData = useMemo(
     () =>
       previewMode === "large" ? amplifyPreviewData(draftData) : draftData,
@@ -432,12 +489,18 @@ export function DocumentEditor({
   );
   const previewDocument = useMemo(
     () =>
-      renderDocument({
-        template: draftTemplate,
-        data: previewData,
-        mode: "preview",
-      }),
-    [previewData, draftTemplate],
+      previewMode === "sample"
+        ? samplePreviewDocument
+        : renderDocument({
+            template: draftTemplate,
+            data: previewData,
+            mode: "preview",
+          }),
+    [draftTemplate, previewData, previewMode, samplePreviewDocument],
+  );
+  const diagnostics = useMemo(
+    () => buildEditorDiagnostics(draftTemplate, samplePreviewDocument),
+    [draftTemplate, samplePreviewDocument],
   );
   const fontImports = useMemo(
     () => buildFontImports(draftTemplate),
@@ -719,9 +782,144 @@ export function DocumentEditor({
     (pageId: string) => {
       setActivePageId(pageId);
       setSelectedNodeIds([]);
+      setEditingTextNodeId(null);
       onActivePageChange?.(pageId);
     },
     [onActivePageChange],
+  );
+
+  const copySelectedNodes = useCallback(() => {
+    const clipboard = createEditorClipboard(selectedItems);
+
+    if (clipboard) {
+      editorClipboard.current = clipboard;
+    }
+  }, [selectedItems]);
+
+  const pasteCopiedNodes = useCallback(() => {
+    const clipboard = editorClipboard.current;
+
+    if (!clipboard) {
+      return;
+    }
+
+    const nextTemplate = structuredClone(draftTemplate);
+    const page = nextTemplate.pages.find(
+      (candidate) => candidate.id === activePageId,
+    );
+    const layer = page ? getWritableFixedLayer(page.layers) : undefined;
+
+    if (!layer) {
+      return;
+    }
+
+    const pasted = pasteEditorClipboardNodes(nextTemplate, clipboard);
+    layer.nodes.push(...pasted.nodes);
+    commitTemplate(nextTemplate, { transaction: "paste" });
+    setSelectedNodeIds(pasted.ids);
+    setEditingTextNodeId(null);
+  }, [activePageId, commitTemplate, draftTemplate]);
+
+  const commitTextEdit = useCallback(
+    (nodeId: string, value: string) => {
+      updateNode(
+        nodeId,
+        (node) => {
+          if (node.type !== "text" || node.locked === true) {
+            return;
+          }
+
+          node.content = parseInlineContent(value);
+        },
+        { transaction: `text-edit:${nodeId}` },
+      );
+      setEditingTextNodeId(null);
+    },
+    [updateNode],
+  );
+
+  const cancelTextEdit = useCallback(() => {
+    setEditingTextNodeId(null);
+  }, []);
+
+  const inferSchemaFromCurrentData = useCallback(() => {
+    const nextTemplate = structuredClone(draftTemplate);
+    nextTemplate.dataSchema = inferDataSchemaFromSample(draftData ?? {});
+    commitTemplate(nextTemplate, { transaction: "infer-data-schema" });
+  }, [commitTemplate, draftData, draftTemplate]);
+
+  const updateTemplateSchema = useCallback(
+    (schema: DataSchema) => {
+      const nextTemplate = structuredClone(draftTemplate);
+      nextTemplate.dataSchema = schema;
+      commitTemplate(nextTemplate, { transaction: "edit-data-schema" });
+    },
+    [commitTemplate, draftTemplate],
+  );
+
+  const insertDocumentBlock = useCallback(
+    (blockId: DocumentBlockId) => {
+      const nextTemplate = structuredClone(draftTemplate);
+      const page = nextTemplate.pages.find(
+        (candidate) => candidate.id === activePageId,
+      );
+
+      if (!page) {
+        return;
+      }
+
+      if (blockId === "line-items-table") {
+        const region = getWritableFlowRegion(page, nextTemplate);
+        const point = snapPoint(defaultDataInsertPoint(pageModel), snapToGrid);
+        const table = createNodeForTool("table", nextTemplate, {
+          x: point.x - region.frame.x,
+          y: point.y - region.frame.y,
+        });
+
+        if (table.type !== "grid") {
+          return;
+        }
+
+        table.binding = { path: "items" };
+        region.children.push(table);
+        commitTemplate(nextTemplate, {
+          transaction: `insert-block:${blockId}`,
+        });
+        setSelectedNodeIds([table.id]);
+        setActiveTool("select");
+        setEditingTextNodeId(null);
+        return;
+      }
+
+      const layer = getWritableFixedLayer(page.layers);
+
+      if (!layer) {
+        return;
+      }
+
+      const nodes = createDocumentBlockNodes(
+        blockId,
+        nextTemplate,
+        snapPoint(defaultDataInsertPoint(pageModel), snapToGrid),
+      );
+
+      if (nodes.length === 0) {
+        return;
+      }
+
+      layer.nodes.push(...nodes);
+      commitTemplate(nextTemplate, { transaction: `insert-block:${blockId}` });
+      setSelectedNodeIds(nodes.map((node) => node.id));
+      setActiveTool("select");
+      setEditingTextNodeId(null);
+    },
+    [
+      activePageId,
+      commitTemplate,
+      draftTemplate,
+      pageModel,
+      snapToGrid,
+    ],
   );
 
   useEffect(() => {
@@ -753,6 +951,12 @@ export function DocumentEditor({
           return;
         case "delete":
           deleteNodes(selectedNodeIds);
+          return;
+        case "copy":
+          copySelectedNodes();
+          return;
+        case "paste":
+          pasteCopiedNodes();
           return;
         case "duplicate":
           duplicateNode(selectedNodeIds[0]);
@@ -803,10 +1007,12 @@ export function DocumentEditor({
       window.removeEventListener("keydown", handleToolShortcut);
     };
   }, [
+    copySelectedNodes,
     deleteNodes,
     duplicateNode,
     groupSelected,
     itemLookup,
+    pasteCopiedNodes,
     previewOpen,
     redoTemplate,
     reorderSelected,
@@ -1028,6 +1234,7 @@ export function DocumentEditor({
     (event: PointerEvent<HTMLDivElement>) => {
       if (activeTool === "select") {
         setSelectedNodeIds([]);
+        setEditingTextNodeId(null);
         return;
       }
 
@@ -1051,6 +1258,7 @@ export function DocumentEditor({
       commitTemplate(nextTemplate);
       setSelectedNodeIds([node.id]);
       setActiveTool("select");
+      setEditingTextNodeId(node.type === "text" ? node.id : null);
     },
     [activePageId, activeTool, commitTemplate, draftTemplate, snapToGrid, zoom],
   );
@@ -1135,6 +1343,60 @@ export function DocumentEditor({
     [activePageId, commitTemplate, draftTemplate, snapToGrid],
   );
 
+  const createBoundGridAtPoint = useCallback(
+    (field: DataExplorerField, point: Pick<Frame, "x" | "y">) => {
+      if (field.kind !== "array") {
+        return;
+      }
+
+      const nextTemplate = structuredClone(draftTemplate);
+      const page = nextTemplate.pages.find(
+        (candidate) => candidate.id === activePageId,
+      );
+
+      if (!page) {
+        return;
+      }
+
+      const region = getWritableFlowRegion(page, nextTemplate);
+      const localPoint = {
+        x: point.x - region.frame.x,
+        y: point.y - region.frame.y,
+      };
+      const node = createNodeForTool(
+        "table",
+        nextTemplate,
+        snapPoint(localPoint, snapToGrid),
+      );
+
+      if (node.type !== "grid") {
+        return;
+      }
+
+      node.binding = { path: field.path };
+      configureGridForArrayField(
+        node,
+        field,
+        dataExplorerModel.allFields.filter(
+          (candidate) =>
+            candidate.parentPath === field.path &&
+            isPrimitiveDataField(candidate),
+        ),
+      );
+      region.children.push(node);
+      commitTemplate(nextTemplate, { transaction: "create-bound-grid" });
+      setSelectedNodeIds([node.id]);
+      setActiveTool("select");
+    },
+    [
+      activePageId,
+      commitTemplate,
+      dataExplorerModel.allFields,
+      draftTemplate,
+      snapToGrid,
+    ],
+  );
+
   const handleDataFieldActivate = useCallback(
     (field: DataExplorerField) => {
       if (selectedNodeIds.length > 1) {
@@ -1142,6 +1404,13 @@ export function DocumentEditor({
       }
 
       if (primarySelectedItem) {
+        if (primarySelectedItem.node.type === "grid" && isPrimitiveDataField(field)) {
+          updateNode(primarySelectedItem.id, (node) => {
+            if (node.type === "grid") addDataFieldAsGridColumn(node, field);
+          });
+          return;
+        }
+
         if (!isFieldBindableForNode(field, primarySelectedItem.node)) {
           return;
         }
@@ -1152,9 +1421,15 @@ export function DocumentEditor({
         return;
       }
 
+      if (field.kind === "array") {
+        createBoundGridAtPoint(field, defaultDataInsertPoint(pageModel));
+        return;
+      }
+
       createBoundTextAtPoint(field, defaultDataInsertPoint(pageModel));
     },
     [
+      createBoundGridAtPoint,
       createBoundTextAtPoint,
       pageModel,
       primarySelectedItem,
@@ -1173,9 +1448,59 @@ export function DocumentEditor({
         return;
       }
 
+      if (selectedNodeIds.length === 1) {
+        const selectedItem = itemLookup.get(selectedNodeIds[0]);
+
+        if (selectedItem?.node.type === "grid") {
+          if (field.kind === "array") {
+            updateNode(selectedItem.id, (node) => applyDataBindingToNode(node, field.path));
+            return;
+          }
+
+          if (isPrimitiveDataField(field)) {
+            updateNode(selectedItem.id, (node) => {
+              if (node.type === "grid") addDataFieldAsGridColumn(node, field);
+            });
+            return;
+          }
+        }
+      }
+
+      if (field.kind === "array") {
+        createBoundGridAtPoint(field, getPagePoint(event, zoom));
+        return;
+      }
+
       createBoundTextAtPoint(field, getPagePoint(event, zoom));
     },
-    [createBoundTextAtPoint, dataExplorerModel.allFields, zoom],
+    [createBoundGridAtPoint, createBoundTextAtPoint, dataExplorerModel.allFields, itemLookup, selectedNodeIds, updateNode, zoom],
+  );
+
+  const selectDiagnosticTarget = useCallback(
+    (diagnostic: EditorDiagnostic) => {
+      if (diagnostic.nodeId) {
+        const pageId = findPageIdForNode(draftTemplate, diagnostic.nodeId);
+
+        if (!pageId) {
+          return;
+        }
+
+        setActivePageId(pageId);
+        onActivePageChange?.(pageId);
+        setSelectedNodeIds([diagnostic.nodeId]);
+        return;
+      }
+
+      if (
+        diagnostic.pageId &&
+        draftTemplate.pages.some((page) => page.id === diagnostic.pageId)
+      ) {
+        setActivePageId(diagnostic.pageId);
+        onActivePageChange?.(diagnostic.pageId);
+        setSelectedNodeIds([]);
+      }
+    },
+    [draftTemplate, onActivePageChange],
   );
 
   return createElement(
@@ -1187,7 +1512,8 @@ export function DocumentEditor({
       },
     },
     createElement(TopToolbar, {
-      templateName: templateDisplayName(draftTemplate, pageModel.name),
+      templateName: documentTitle ?? templateDisplayName(draftTemplate, pageModel.name),
+      status: documentStatus,
       zoom,
       canUndo: historyPast.length > 0,
       canRedo: historyFuture.length > 0,
@@ -1206,7 +1532,17 @@ export function DocumentEditor({
         setPreviewMode(mode);
         setPreviewOpen(true);
       },
-      onSave: () => onChange?.(draftTemplate),
+      onSave: () => {
+        if (onSave) {
+          onSave(draftTemplate, draftData);
+          return;
+        }
+
+        onChange?.(draftTemplate);
+      },
+      diagnostics,
+      diagnosticsOpen,
+      onToggleDiagnostics: () => setDiagnosticsOpen((open) => !open),
       accessory: toolbarAccessory,
     }),
     createElement(ToolRail, { activeTool, onSelectTool: setActiveTool }),
@@ -1237,8 +1573,14 @@ export function DocumentEditor({
       }),
       createElement(DataSchemaPanel, {
         model: dataExplorerModel,
+        data: draftData,
+        schema: draftTemplate.dataSchema,
         selectedNode: primarySelectedItem?.node,
         selectedCount: selectedNodeIds.length,
+        onDataCommit: commitData,
+        onInferSchema: inferSchemaFromCurrentData,
+        onSchemaCommit: updateTemplateSchema,
+        onInsertBlock: insertDocumentBlock,
         onActivateField: handleDataFieldActivate,
       }),
     ),
@@ -1252,18 +1594,49 @@ export function DocumentEditor({
         showGrid,
         showRulers,
         selectedNodeIds,
+        editingTextNodeId,
         activeGuides,
         verticalGuides,
         horizontalGuides,
         boardRef,
         onNodePointerDown: handleNodePointerDown,
         onStartResize: handleStartResize,
+        onStartTextEdit: (node) => {
+          const item = itemLookup.get(node.sourceNodeId);
+
+          if (!item || item.node.type !== "text" || item.node.locked === true) {
+            return;
+          }
+
+          setSelectedNodeIds([node.sourceNodeId]);
+          setEditingTextNodeId(node.sourceNodeId);
+        },
+        onTextCommit: commitTextEdit,
+        onTextCancel: cancelTextEdit,
+        onCopySelection: copySelectedNodes,
+        onPasteSelection: pasteCopiedNodes,
+        onDuplicateSelection: () => {
+          if (selectedNodeIds.length === 1) {
+            duplicateNode(selectedNodeIds[0]);
+          }
+        },
+        onDeleteSelection: () => deleteNodes(selectedNodeIds),
+        onGroupSelection: groupSelected,
+        onUngroupSelection: ungroupSelected,
+        onReorderSelection: reorderSelected,
         onPagePointerDown: handlePagePointerDown,
         onBindingDrop: handleBindingDrop,
         onStartGuideDrag: (axis, index) => {
           guideDragState.current = { axis, index };
         },
       }),
+      diagnosticsOpen
+        ? createElement(DiagnosticsDock, {
+            diagnostics,
+            onSelectDiagnostic: selectDiagnosticTarget,
+            onClose: () => setDiagnosticsOpen(false),
+          })
+        : null,
     ),
     createElement(
       "aside",
@@ -1341,6 +1714,19 @@ function templateDisplayName(
     ? String(template.metadata.name)
     : fallbackName || template.id;
   return /\btemplate\b/i.test(rawName) ? rawName : `${rawName} Template`;
+}
+
+function findPageIdForNode(
+  template: DocumentTemplate,
+  nodeId: string,
+): string | undefined {
+  for (const page of template.pages) {
+    if (collectPageNodeItems(template, page.id).some((item) => item.id === nodeId)) {
+      return page.id;
+    }
+  }
+
+  return undefined;
 }
 
 function cloneEditorData(
@@ -1557,6 +1943,7 @@ function PagePanel({
 
 function TopToolbar({
   templateName,
+  status,
   zoom,
   canUndo,
   canRedo,
@@ -1567,9 +1954,13 @@ function TopToolbar({
   onCopyTemplate,
   onPreview,
   onSave,
+  diagnostics,
+  diagnosticsOpen,
+  onToggleDiagnostics,
   accessory,
 }: {
   templateName: string;
+  status: NonNullable<DocumentEditorProps["documentStatus"]>;
   zoom: number;
   canUndo: boolean;
   canRedo: boolean;
@@ -1580,6 +1971,9 @@ function TopToolbar({
   onCopyTemplate: () => void;
   onPreview: (mode: PreviewMode) => void;
   onSave: () => void;
+  diagnostics: EditorDiagnosticsSummary;
+  diagnosticsOpen: boolean;
+  onToggleDiagnostics: () => void;
   accessory?: ReactNode;
 }): ReactElement {
   return createElement(
@@ -1600,7 +1994,7 @@ function TopToolbar({
       createElement("div", { style: brandNameStyle }, "Templara"),
       createElement("span", { style: toolbarDividerStyle }),
       accessory ?? createElement("div", { style: templateTitleStyle }, templateName),
-      createElement("span", { style: statusPillStyle }, "Draft"),
+      createElement("span", { style: statusPillStyle }, toolbarStatusLabel(status)),
     ),
     createElement(
       "div",
@@ -1634,6 +2028,11 @@ function TopToolbar({
         onClick: onCopyTemplate,
         compact: true,
       }),
+      createElement(DiagnosticsToolbarButton, {
+        diagnostics,
+        open: diagnosticsOpen,
+        onClick: onToggleDiagnostics,
+      }),
       createElement(PreviewDropdown, { onPreview }),
       createElement(ToolbarButton, {
         label: "Save",
@@ -1641,6 +2040,207 @@ function TopToolbar({
         onClick: onSave,
         variant: "primary",
       }),
+    ),
+  );
+}
+
+function toolbarStatusLabel(status: NonNullable<DocumentEditorProps["documentStatus"]>): string {
+  if (status === "dirty") return "Unsaved";
+  if (status === "saved") return "Saved";
+  return "Draft";
+}
+
+function DiagnosticsToolbarButton({
+  diagnostics,
+  open,
+  onClick,
+}: {
+  diagnostics: EditorDiagnosticsSummary;
+  open: boolean;
+  onClick: () => void;
+}): ReactElement {
+  const count = diagnostics.blockingCount + diagnostics.warningCount;
+  const label =
+    count > 0
+      ? `${count} Issue${count === 1 ? "" : "s"}`
+      : diagnostics.infoCount > 0
+        ? `${diagnostics.infoCount} Info`
+        : "Ready";
+  const severity =
+    diagnostics.blockingCount > 0
+      ? "blocking"
+      : diagnostics.warningCount > 0
+        ? "warning"
+        : "info";
+
+  return createElement(
+    "button",
+    {
+      type: "button",
+      title: open ? "Hide diagnostics" : "Show diagnostics",
+      onClick,
+      style: {
+        ...diagnosticsToolbarButtonStyle,
+        ...(open ? diagnosticsToolbarButtonOpenStyle : null),
+      },
+    },
+    createElement("span", {
+      style: {
+        ...diagnosticsDotStyle,
+        background:
+          severity === "blocking"
+            ? "#dc2626"
+            : severity === "warning"
+              ? "#f59e0b"
+              : "#16a34a",
+      },
+    }),
+    createElement("span", null, label),
+  );
+}
+
+function DiagnosticsDock({
+  diagnostics,
+  onSelectDiagnostic,
+  onClose,
+}: {
+  diagnostics: EditorDiagnosticsSummary;
+  onSelectDiagnostic: (diagnostic: EditorDiagnostic) => void;
+  onClose: () => void;
+}): ReactElement {
+  const groups: Array<{
+    severity: EditorDiagnostic["severity"];
+    label: string;
+    items: EditorDiagnostic[];
+  }> = [
+    {
+      severity: "blocking",
+      label: "Blocking",
+      items: diagnostics.diagnostics.filter((diagnostic) => diagnostic.severity === "blocking"),
+    },
+    {
+      severity: "warning",
+      label: "Warnings",
+      items: diagnostics.diagnostics.filter((diagnostic) => diagnostic.severity === "warning"),
+    },
+    {
+      severity: "info",
+      label: "Info",
+      items: diagnostics.diagnostics.filter((diagnostic) => diagnostic.severity === "info"),
+    },
+  ];
+  const hasDiagnostics = diagnostics.diagnostics.length > 0;
+
+  return createElement(
+    "section",
+    {
+      style: diagnosticsDockStyle,
+      "aria-label": "Document diagnostics",
+    },
+    createElement(
+      "header",
+      { style: diagnosticsDockHeaderStyle },
+      createElement(
+        "div",
+        null,
+        createElement("h2", { style: diagnosticsDockTitleStyle }, "Diagnostics"),
+        createElement(
+          "p",
+          { style: diagnosticsDockSubtitleStyle },
+          hasDiagnostics
+            ? `${diagnostics.blockingCount} blocking · ${diagnostics.warningCount} warning · ${diagnostics.infoCount} info`
+            : "No validation, render, or export issues found.",
+        ),
+      ),
+      createElement(
+        "button",
+        {
+          type: "button",
+          onClick: onClose,
+          title: "Close diagnostics",
+          style: diagnosticsDockCloseButtonStyle,
+        },
+        "Close",
+      ),
+    ),
+    createElement(
+      "div",
+      { style: diagnosticsDockBodyStyle },
+      hasDiagnostics
+        ? groups.map((group) =>
+            group.items.length > 0
+              ? createElement(
+                  "section",
+                  { key: group.severity, style: diagnosticsGroupStyle },
+                  createElement(
+                    "div",
+                    { style: diagnosticsGroupHeaderStyle },
+                    createElement("span", null, group.label),
+                    createElement("span", null, group.items.length),
+                  ),
+                  group.items.map((diagnostic, index) =>
+                    createElement(DiagnosticRow, {
+                      key: `${diagnostic.code}-${diagnostic.nodeId ?? diagnostic.path ?? diagnostic.pageId ?? index}`,
+                      diagnostic,
+                      onSelect: onSelectDiagnostic,
+                    }),
+                  ),
+                )
+              : null,
+          )
+        : createElement(
+            "div",
+            { style: diagnosticsEmptyStateStyle },
+            "Template structure, render warnings, and export preflight are clean.",
+          ),
+    ),
+  );
+}
+
+function DiagnosticRow({
+  diagnostic,
+  onSelect,
+}: {
+  diagnostic: EditorDiagnostic;
+  onSelect: (diagnostic: EditorDiagnostic) => void;
+}): ReactElement {
+  const canNavigate = Boolean(diagnostic.nodeId || diagnostic.pageId);
+  const detail = diagnostic.nodeId ?? diagnostic.path ?? diagnostic.pageId ?? diagnostic.source;
+
+  return createElement(
+    "button",
+    {
+      type: "button",
+      onClick: () => onSelect(diagnostic),
+      disabled: !canNavigate,
+      title: canNavigate ? "Select related item" : "No canvas target for this diagnostic",
+      style: {
+        ...diagnosticRowStyle,
+        cursor: canNavigate ? "pointer" : "default",
+        opacity: canNavigate ? 1 : 0.76,
+      },
+    },
+    createElement("span", {
+      style: {
+        ...diagnosticSeverityRailStyle,
+        background:
+          diagnostic.severity === "blocking"
+            ? "#dc2626"
+            : diagnostic.severity === "warning"
+              ? "#f59e0b"
+              : "#16a34a",
+      },
+    }),
+    createElement(
+      "span",
+      { style: diagnosticRowContentStyle },
+      createElement(
+        "span",
+        { style: diagnosticRowMetaStyle },
+        `${diagnostic.source} · ${diagnostic.code}`,
+      ),
+      createElement("span", { style: diagnosticRowMessageStyle }, diagnostic.message),
+      createElement("span", { style: diagnosticRowTargetStyle }, detail),
     ),
   );
 }
@@ -1939,12 +2539,23 @@ function EditorCanvas({
   showGrid,
   showRulers,
   selectedNodeIds,
+  editingTextNodeId,
   activeGuides,
   verticalGuides,
   horizontalGuides,
   boardRef,
   onNodePointerDown,
   onStartResize,
+  onStartTextEdit,
+  onTextCommit,
+  onTextCancel,
+  onCopySelection,
+  onPasteSelection,
+  onDuplicateSelection,
+  onDeleteSelection,
+  onGroupSelection,
+  onUngroupSelection,
+  onReorderSelection,
   onPagePointerDown,
   onBindingDrop,
   onStartGuideDrag,
@@ -1955,6 +2566,7 @@ function EditorCanvas({
   showGrid: boolean;
   showRulers: boolean;
   selectedNodeIds: string[];
+  editingTextNodeId: string | null;
   activeGuides: ActiveGuide[];
   verticalGuides: number[];
   horizontalGuides: number[];
@@ -1967,6 +2579,16 @@ function EditorCanvas({
     event: PointerEvent<HTMLElement>,
     handle: ResizeHandle,
   ) => void;
+  onStartTextEdit: (node: EditorRenderNode) => void;
+  onTextCommit: (nodeId: string, value: string) => void;
+  onTextCancel: () => void;
+  onCopySelection: () => void;
+  onPasteSelection: () => void;
+  onDuplicateSelection: () => void;
+  onDeleteSelection: () => void;
+  onGroupSelection: () => void;
+  onUngroupSelection: () => void;
+  onReorderSelection: (command: ReorderCommand) => void;
   onPagePointerDown: (event: PointerEvent<HTMLDivElement>) => void;
   onBindingDrop: (event: DragEvent<HTMLDivElement>, fieldPath: string) => void;
   onStartGuideDrag: (axis: GuideAxis, index: number) => void;
@@ -2086,7 +2708,11 @@ function EditorCanvas({
               key: node.id,
               node,
               selected: selectedNodeIds.includes(node.sourceNodeId),
+              editing: editingTextNodeId === node.sourceNodeId,
               onPointerDown: onNodePointerDown,
+              onStartTextEdit,
+              onTextCommit,
+              onTextCancel,
             }),
           ),
           createElement(SelectionOverlay, {
@@ -2095,6 +2721,13 @@ function EditorCanvas({
             ),
             zoom,
             onStartResize,
+            onCopySelection,
+            onPasteSelection,
+            onDuplicateSelection,
+            onDeleteSelection,
+            onGroupSelection,
+            onUngroupSelection,
+            onReorderSelection,
           }),
         ),
       ),
@@ -2264,6 +2897,13 @@ function SelectionOverlay({
   nodes,
   zoom,
   onStartResize,
+  onCopySelection,
+  onPasteSelection,
+  onDuplicateSelection,
+  onDeleteSelection,
+  onGroupSelection,
+  onUngroupSelection,
+  onReorderSelection,
 }: {
   nodes: EditorRenderNode[];
   zoom: number;
@@ -2271,6 +2911,13 @@ function SelectionOverlay({
     event: PointerEvent<HTMLElement>,
     handle: ResizeHandle,
   ) => void;
+  onCopySelection: () => void;
+  onPasteSelection: () => void;
+  onDuplicateSelection: () => void;
+  onDeleteSelection: () => void;
+  onGroupSelection: () => void;
+  onUngroupSelection: () => void;
+  onReorderSelection: (command: ReorderCommand) => void;
 }): ReactElement | null {
   if (nodes.length === 0) {
     return null;
@@ -2297,6 +2944,57 @@ function SelectionOverlay({
         zIndex: 20,
       },
     },
+    createElement(
+      "div",
+      {
+        style: {
+          ...selectionActionBarStyle,
+          transform: `translateY(calc(-100% - ${8 * handleScale}px)) scale(${handleScale})`,
+          transformOrigin: "left bottom",
+        },
+        onPointerDown: (event: PointerEvent<HTMLDivElement>) =>
+          event.stopPropagation(),
+      },
+      createElement(SelectionActionButton, {
+        label: "Copy",
+        onClick: onCopySelection,
+      }),
+      createElement(SelectionActionButton, {
+        label: "Paste",
+        onClick: onPasteSelection,
+      }),
+      resizable
+        ? createElement(SelectionActionButton, {
+            label: "Duplicate",
+            onClick: onDuplicateSelection,
+          })
+        : null,
+      createElement(SelectionActionButton, {
+        label: "Delete",
+        onClick: onDeleteSelection,
+      }),
+      nodes.length > 1
+        ? createElement(SelectionActionButton, {
+            label: "Group",
+            onClick: onGroupSelection,
+          })
+        : createElement(SelectionActionButton, {
+            label: "Ungroup",
+            onClick: onUngroupSelection,
+          }),
+      resizable
+        ? createElement(SelectionActionButton, {
+            label: "Back",
+            onClick: () => onReorderSelection("backward"),
+          })
+        : null,
+      resizable
+        ? createElement(SelectionActionButton, {
+            label: "Front",
+            onClick: () => onReorderSelection("front"),
+          })
+        : null,
+    ),
     (resizable ? RESIZE_HANDLES : (["nw", "ne", "sw", "se"] as ResizeHandle[])).map(
       (handle) =>
         createElement("span", {
@@ -2314,6 +3012,27 @@ function SelectionOverlay({
           },
         }),
     ),
+  );
+}
+
+function SelectionActionButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}): ReactElement {
+  return createElement(
+    "button",
+    {
+      type: "button",
+      style: selectionActionButtonStyle,
+      onClick: (event: MouseEvent<HTMLButtonElement>) => {
+        event.stopPropagation();
+        onClick();
+      },
+    },
+    label,
   );
 }
 
@@ -2344,14 +3063,22 @@ function resizeHandlePlacement(handle: ResizeHandle): CSSProperties {
 function EditorNodeView({
   node,
   selected,
+  editing,
   onPointerDown,
+  onStartTextEdit,
+  onTextCommit,
+  onTextCancel,
 }: {
   node: EditorRenderNode;
   selected: boolean;
+  editing: boolean;
   onPointerDown: (
     event: PointerEvent<HTMLElement>,
     node: EditorRenderNode,
   ) => void;
+  onStartTextEdit: (node: EditorRenderNode) => void;
+  onTextCommit: (nodeId: string, value: string) => void;
+  onTextCancel: () => void;
 }): ReactElement {
   const baseStyle: CSSProperties = {
     position: "absolute",
@@ -2372,9 +3099,26 @@ function EditorNodeView({
     "data-templara-selected": selected ? "true" : undefined,
     onPointerDown: (event: PointerEvent<HTMLElement>) =>
       onPointerDown(event, node),
+    onDoubleClick:
+      node.nodeType === "text"
+        ? (event: MouseEvent<HTMLElement>) => {
+            event.stopPropagation();
+            onStartTextEdit(node);
+          }
+        : undefined,
   };
 
   if (node.visual.kind === "text") {
+    if (editing) {
+      return createElement(InlineTextEditor, {
+        node,
+        nodeProps,
+        style: baseStyle,
+        onCommit: onTextCommit,
+        onCancel: onTextCancel,
+      });
+    }
+
     return createElement("div", {
       ...nodeProps,
       style: {
@@ -2440,6 +3184,94 @@ function EditorNodeView({
     selected,
     style: baseStyle,
     visual: node.visual,
+  });
+}
+
+function InlineTextEditor({
+  node,
+  nodeProps,
+  style,
+  onCommit,
+  onCancel,
+}: {
+  node: EditorRenderNode;
+  nodeProps: Record<string, unknown>;
+  style: CSSProperties;
+  onCommit: (nodeId: string, value: string) => void;
+  onCancel: () => void;
+}): ReactElement {
+  const textVisual = node.visual.kind === "text" ? node.visual : undefined;
+  const [value, setValue] = useState(textVisual?.text ?? "");
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const cancelled = useRef(false);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+
+    if (!textarea) {
+      return;
+    }
+
+    textarea.focus();
+    textarea.select();
+  }, []);
+
+  const commit = useCallback(() => {
+    if (cancelled.current) {
+      onCancel();
+      return;
+    }
+
+    onCommit(node.sourceNodeId, value);
+  }, [node.sourceNodeId, onCancel, onCommit, value]);
+
+  return createElement("textarea", {
+    ...nodeProps,
+    ref: textareaRef,
+    value,
+    spellCheck: false,
+    onPointerDown: (event: PointerEvent<HTMLTextAreaElement>) => {
+      event.stopPropagation();
+    },
+    onDoubleClick: (event: MouseEvent<HTMLTextAreaElement>) => {
+      event.stopPropagation();
+    },
+    onChange: (event) =>
+      setValue((event.currentTarget as HTMLTextAreaElement).value),
+    onBlur: commit,
+    onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelled.current = true;
+        onCancel();
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        commit();
+      }
+    },
+    style: {
+      ...style,
+      resize: "none",
+      border: "0",
+      padding: 0,
+      background: "rgba(255, 255, 255, 0.92)",
+      outline: "2px solid #6366f1",
+      outlineOffset: 2,
+      fontFamily: textVisual?.style.fontFamily,
+      fontSize: textVisual?.style.fontSize,
+      fontWeight: textVisual?.style.fontWeight,
+      lineHeight: textVisual?.style.lineHeight,
+      color: textVisual?.style.color,
+      textAlign: textVisual?.style.align,
+      letterSpacing: textVisual?.style.letterSpacing,
+      whiteSpace: "pre-wrap",
+      cursor: "text",
+      pointerEvents: "auto",
+      userSelect: "text",
+    },
   });
 }
 
@@ -3101,19 +3933,42 @@ function nodeIcon(type: string | undefined): string {
 
 function DataSchemaPanel({
   model,
+  data,
+  schema,
   selectedNode,
   selectedCount,
+  onDataCommit,
+  onInferSchema,
+  onSchemaCommit,
+  onInsertBlock,
   onActivateField,
 }: {
   model: ReturnType<typeof buildDataExplorerModel>;
+  data?: Record<string, unknown>;
+  schema?: DataSchema;
   selectedNode?: EditableNode;
   selectedCount: number;
+  onDataCommit: (data: Record<string, unknown>) => void;
+  onInferSchema: () => void;
+  onSchemaCommit: (schema: DataSchema) => void;
+  onInsertBlock: (blockId: DocumentBlockId) => void;
   onActivateField: (field: DataExplorerField) => void;
 }): ReactElement {
   const [query, setQuery] = useState("");
+  const [showSampleEditor, setShowSampleEditor] = useState(false);
+  const [sampleDraft, setSampleDraft] = useState(() =>
+    JSON.stringify(data ?? {}, null, 2),
+  );
+  const [sampleError, setSampleError] = useState<string | null>(null);
   const [collapsedFields, setCollapsedFields] = useState<
     Record<string, boolean>
   >({});
+
+  useEffect(() => {
+    setSampleDraft(JSON.stringify(data ?? {}, null, 2));
+    setSampleError(null);
+  }, [data]);
+
   const normalizedQuery = query.trim().toLowerCase();
   const visibleGroups = filterDataExplorerGroups(
     model.groups,
@@ -3141,6 +3996,58 @@ function DataSchemaPanel({
     createElement(PanelHeader, {
       title: "Data",
       detail: `${model.allFields.length} fields`,
+    }),
+    createElement(BlockInsertPanel, { onInsertBlock }),
+    createElement(
+      "div",
+      { style: dataAuthoringToolbarStyle },
+      createElement(DataActionButton, {
+        icon: ThirdBracketIcon,
+        label: showSampleEditor ? "Hide JSON" : "Sample JSON",
+        title: "Edit sample data JSON",
+        onClick: () => setShowSampleEditor((open) => !open),
+      }),
+      createElement(DataActionButton, {
+        icon: Link01Icon,
+        label: "Infer schema",
+        title: "Infer schema fields from sample data",
+        onClick: onInferSchema,
+      }),
+    ),
+    showSampleEditor
+      ? createElement(SampleJsonEditor, {
+          value: sampleDraft,
+          error: sampleError,
+          onChange: (next) => {
+            setSampleDraft(next);
+            setSampleError(null);
+          },
+          onApply: () => {
+            try {
+              const parsed = JSON.parse(sampleDraft) as unknown;
+
+              if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+                setSampleError("Sample data must be a JSON object.");
+                return;
+              }
+
+              onDataCommit(parsed as Record<string, unknown>);
+              setSampleError(null);
+            } catch (error) {
+              setSampleError(
+                error instanceof Error ? error.message : "Invalid JSON.",
+              );
+            }
+          },
+          onRevert: () => {
+            setSampleDraft(JSON.stringify(data ?? {}, null, 2));
+            setSampleError(null);
+          },
+        })
+      : null,
+    createElement(SchemaQuickEditor, {
+      schema: schema ?? { fields: [] },
+      onCommit: onSchemaCommit,
     }),
     createElement(DataSearchInput, { value: query, onChange: setQuery }),
     createElement("div", { style: dataPanelStatusStyle }, status),
@@ -3177,6 +4084,213 @@ function DataSchemaPanel({
             ),
     ),
   );
+}
+
+const documentBlocks: Array<{
+  id: DocumentBlockId;
+  label: string;
+}> = [
+  { id: "company-header", label: "Company header" },
+  { id: "address-block", label: "Address block" },
+  { id: "line-items-table", label: "Line items table" },
+  { id: "totals-block", label: "Totals block" },
+  { id: "signature-block", label: "Signature block" },
+  { id: "code-block", label: "Barcode / QR block" },
+];
+
+function BlockInsertPanel({
+  onInsertBlock,
+}: {
+  onInsertBlock: (blockId: DocumentBlockId) => void;
+}): ReactElement {
+  return createElement(
+    "div",
+    { style: blockInsertPanelStyle },
+    createElement("div", { style: blockInsertHeaderStyle }, "Blocks"),
+    createElement(
+      "div",
+      { style: blockInsertGridStyle },
+      documentBlocks.map((block) =>
+        createElement(
+          "button",
+          {
+            key: block.id,
+            type: "button",
+            title: `Insert ${block.label}`,
+            style: blockInsertButtonStyle,
+            onClick: () => onInsertBlock(block.id),
+          },
+          block.label,
+        ),
+      ),
+    ),
+  );
+}
+
+function SampleJsonEditor({
+  value,
+  error,
+  onChange,
+  onApply,
+  onRevert,
+}: {
+  value: string;
+  error: string | null;
+  onChange: (value: string) => void;
+  onApply: () => void;
+  onRevert: () => void;
+}): ReactElement {
+  return createElement(
+    "div",
+    { style: sampleEditorStyle },
+    createElement("textarea", {
+      value,
+      spellCheck: false,
+      onChange: (event) =>
+        onChange((event.currentTarget as HTMLTextAreaElement).value),
+      style: sampleEditorTextareaStyle,
+    }),
+    error ? createElement("div", { style: sampleEditorErrorStyle }, error) : null,
+    createElement(
+      "div",
+      { style: sampleEditorActionsStyle },
+      createElement(
+        "button",
+        { type: "button", style: sampleEditorButtonStyle, onClick: onRevert },
+        "Revert",
+      ),
+      createElement(
+        "button",
+        {
+          type: "button",
+          style: { ...sampleEditorButtonStyle, ...sampleEditorPrimaryButtonStyle },
+          onClick: onApply,
+        },
+        "Apply",
+      ),
+    ),
+  );
+}
+
+function SchemaQuickEditor({
+  schema,
+  onCommit,
+}: {
+  schema: DataSchema;
+  onCommit: (schema: DataSchema) => void;
+}): ReactElement {
+  const fields = schema.fields ?? [];
+
+  const commitField = (index: number, patch: Partial<DataField>): void => {
+    const next = structuredClone(schema);
+    next.fields = [...(next.fields ?? [])];
+    next.fields[index] = { ...next.fields[index], ...patch };
+    onCommit(next);
+  };
+
+  const deleteField = (index: number): void => {
+    const next = structuredClone(schema);
+    next.fields = (next.fields ?? []).filter((_, candidateIndex) => candidateIndex !== index);
+    onCommit(next);
+  };
+
+  const addField = (): void => {
+    const next = structuredClone(schema);
+    const path = nextUniqueSchemaPath(next.fields ?? [], "field");
+    next.fields = [
+      ...(next.fields ?? []),
+      { path, label: "Field", kind: "string" },
+    ];
+    onCommit(next);
+  };
+
+  return createElement(
+    "div",
+    { style: schemaEditorStyle },
+    createElement(
+      "div",
+      { style: schemaEditorHeaderStyle },
+      createElement("span", null, "Schema"),
+      createElement(
+        "button",
+        {
+          type: "button",
+          style: schemaAddButtonStyle,
+          onClick: addField,
+        },
+        "+ Field",
+      ),
+    ),
+    fields.length === 0
+      ? createElement(
+          "p",
+          { style: emptyTextStyle },
+          "Infer or add fields to make bindings discoverable.",
+        )
+      : fields.map((field, index) =>
+          createElement(
+            "div",
+            { key: `${field.path}-${index}`, style: schemaFieldEditorStyle },
+            createElement("input", {
+              value: field.label,
+              "aria-label": "Field label",
+              onChange: (event) =>
+                commitField(index, {
+                  label: (event.currentTarget as HTMLInputElement).value,
+                }),
+              style: schemaInputStyle,
+            }),
+            createElement("input", {
+              value: field.path,
+              "aria-label": "Field path",
+              onChange: (event) =>
+                commitField(index, {
+                  path: (event.currentTarget as HTMLInputElement).value,
+                }),
+              style: schemaInputStyle,
+            }),
+            createElement(
+              "select",
+              {
+                value: field.kind,
+                "aria-label": "Field kind",
+                onChange: (event) =>
+                  commitField(index, {
+                    kind: (event.currentTarget as HTMLSelectElement)
+                      .value as DataField["kind"],
+                  }),
+                style: schemaSelectStyle,
+              },
+              ["string", "number", "boolean", "date", "array", "object", "image", "unknown"].map((kind) =>
+                createElement("option", { key: kind, value: kind }, kind),
+              ),
+            ),
+            createElement(
+              "button",
+              {
+                type: "button",
+                title: `Delete ${field.path}`,
+                style: schemaDeleteButtonStyle,
+                onClick: () => deleteField(index),
+              },
+              "Delete",
+            ),
+          ),
+        ),
+  );
+}
+
+function nextUniqueSchemaPath(fields: DataField[], base: string): string {
+  const paths = new Set(fields.map((field) => field.path));
+  let candidate = base;
+  let index = 2;
+
+  while (paths.has(candidate)) {
+    candidate = `${base}${index}`;
+    index += 1;
+  }
+
+  return candidate;
 }
 
 function filterDataExplorerGroups(
@@ -3257,15 +4371,18 @@ function DataExplorerFieldRow({
   onActivateField: (field: DataExplorerField) => void;
 }): ReactElement {
   const bindDisabled =
-    selectedCount > 1 || !isFieldBindableForNode(field, selectedNode);
-  const canDragToCanvas = isFieldBindableForNode(field);
+    selectedCount > 1 || !isFieldActionableForSelection(field, selectedNode);
+  const canDragToCanvas =
+    field.bindable && (field.kind === "array" || isFieldBindableForNode(field));
   const title = bindDisabled
     ? selectedCount > 1
       ? "Select one node to bind"
       : `Cannot bind ${field.kind} to ${selectedNode?.type ?? "text"}`
     : selectedNode
       ? `Bind ${field.path} to selected ${selectedNode.type}`
-      : `Create text bound to ${field.path}`;
+      : field.kind === "array"
+        ? `Create table bound to ${field.path}`
+        : `Create text bound to ${field.path}`;
 
   return createElement(
     "div",
@@ -3349,6 +4466,17 @@ function DataExplorerFieldRow({
         },
         field.kind,
       ),
+      createElement(
+        "span",
+        {
+          style: {
+            ...dataTypePillStyle,
+            background: "#f8fafc",
+            color: "#64748b",
+          },
+        },
+        field.source,
+      ),
     ),
     createElement(
       "span",
@@ -3368,7 +4496,7 @@ function DataExplorerFieldRow({
       }),
       createElement(DataActionButton, {
         icon: selectedNode ? Link01Icon : TypeCursorIcon,
-        label: selectedNode ? "Bind" : "Text",
+        label: selectedNode ? "Bind" : field.kind === "array" ? "Table" : "Text",
         title,
         disabled: bindDisabled,
         onClick: () => onActivateField(field),
@@ -3994,6 +5122,310 @@ function defaultDataInsertPoint(
   };
 }
 
+function isPrimitiveDataField(field: DataExplorerField): boolean {
+  return field.bindable && field.kind !== "array" && field.kind !== "object";
+}
+
+function isFieldActionableForSelection(
+  field: DataExplorerField,
+  selectedNode?: EditableNode,
+): boolean {
+  if (!selectedNode && field.kind === "array") {
+    return field.bindable;
+  }
+
+  if (selectedNode?.type === "grid") {
+    return field.kind === "array" || isPrimitiveDataField(field);
+  }
+
+  return isFieldBindableForNode(field, selectedNode);
+}
+
+function addDataFieldAsGridColumn(grid: GridNode, field: DataExplorerField): void {
+  const columnId = addGridColumn(grid, {
+    id: field.path.split(".").at(-1) ?? field.label,
+    label: field.label,
+    width: Math.max(96, Math.min(220, field.label.length * 9 + 36)),
+  });
+
+  bindGridColumn(grid, columnId, field.path);
+}
+
+function configureGridForArrayField(
+  grid: GridNode,
+  arrayField: DataExplorerField,
+  childFields: DataExplorerField[],
+): void {
+  const primitiveChildren = childFields.slice(0, 6);
+
+  if (primitiveChildren.length === 0) {
+    return;
+  }
+
+  const usedColumnIds = new Set<string>();
+  const columns = primitiveChildren.map((field) => {
+    const baseId = toColumnId(field.path.split(".").at(-1) ?? field.label);
+    const id = uniqueColumnId(baseId, usedColumnIds);
+
+    return {
+      id,
+      label: field.label,
+      width: Math.max(88, Math.min(220, field.label.length * 9 + 42)),
+      binding: scopedArrayChildPath(arrayField.path, field.path),
+    };
+  });
+
+  const headerStyle: TextNode["style"] = {
+    fontFamily: "Geist",
+    fontSize: 10,
+    fontWeight: 650,
+    lineHeight: 1.2,
+    color: "#111827",
+  };
+  const rowStyle: TextNode["style"] = {
+    fontFamily: "Geist",
+    fontSize: 11,
+    fontWeight: 500,
+    lineHeight: 1.2,
+    color: "#111827",
+  };
+
+  grid.columns = columns.map((column) => ({
+    id: column.id,
+    label: column.label,
+    width: column.width,
+  }));
+  grid.header = {
+    cells: columns.map((column) => ({
+      columnId: column.id,
+      content: [
+        {
+          id: `${grid.id}-${column.id}-header`,
+          type: "text",
+          frame: {
+            x: 8,
+            y: 8,
+            width: Math.max(24, column.width - 16),
+            height: 14,
+          },
+          content: [{ kind: "text", text: column.label }],
+          style: headerStyle,
+        } satisfies TextNode,
+      ],
+      style: { fill: "#f8fafc", stroke: "#d8dee8", strokeWidth: 1 },
+    })),
+  };
+  grid.row = {
+    cells: columns.map((column) => ({
+      columnId: column.id,
+      content: [
+        {
+          id: `${grid.id}-${column.id}-cell`,
+          type: "text",
+          frame: {
+            x: 8,
+            y: 8,
+            width: Math.max(24, column.width - 16),
+            height: 14,
+          },
+          content: [
+            {
+              kind: "field",
+              label: column.label,
+              binding: { path: column.binding },
+            },
+          ],
+          style: rowStyle,
+        } satisfies TextNode,
+      ],
+      style: { fill: "#ffffff", stroke: "#d8dee8", strokeWidth: 1 },
+    })),
+  };
+  grid.staticRows = undefined;
+  grid.frame.width = columns.reduce((sum, column) => sum + column.width, 0);
+  grid.frame.height = 76;
+}
+
+function createDocumentBlockNodes(
+  blockId: DocumentBlockId,
+  template: DocumentTemplate,
+  point: Pick<Frame, "x" | "y">,
+): DocNode[] {
+  const x = Math.max(0, roundFrameValue(point.x));
+  const y = Math.max(0, roundFrameValue(point.y));
+
+  if (blockId === "line-items-table") {
+    const table = createNodeForTool("table", template, { x, y });
+    if (table.type === "grid") {
+      table.binding = { path: "items" };
+    }
+    return [table];
+  }
+
+  if (blockId === "signature-block") {
+    return [createNodeForTool("signature", template, { x, y })];
+  }
+
+  if (blockId === "company-header") {
+    return [
+      {
+        id: createNodeId(template, "company-header"),
+        type: "group",
+        name: "Company Header",
+        frame: { x, y, width: 420, height: 96 },
+        children: [
+          blockTextNode(template, "company-name", 0, 0, 260, 26, "{{business.name}}", 22, 700),
+          blockTextNode(template, "company-address", 0, 34, 280, 18, "{{business.address}}", 11, 500),
+          blockTextNode(template, "company-contact", 0, 56, 280, 18, "{{business.phone}} · {{business.email}}", 11, 500),
+        ],
+      } satisfies GroupNode,
+    ];
+  }
+
+  if (blockId === "address-block") {
+    return [
+      {
+        id: createNodeId(template, "address-block"),
+        type: "group",
+        name: "Address Block",
+        frame: { x, y, width: 540, height: 116 },
+        children: [
+          addressBlockColumn(template, "shipper", "SHIPPER", "{{shipper.name}}\n{{shipper.address}}\n{{shipper.city}}, {{shipper.state}} {{shipper.zip}}", 0),
+          addressBlockColumn(template, "recipient", "RECIPIENT", "{{recipient.name}}\n{{recipient.address}}\n{{recipient.city}}, {{recipient.state}} {{recipient.zip}}", 180),
+          addressBlockColumn(template, "delivery", "DELIVERY", "{{delivery.name}}\n{{delivery.address}}\n{{delivery.city}}, {{delivery.state}} {{delivery.zip}}", 360),
+        ],
+      } satisfies GroupNode,
+    ];
+  }
+
+  if (blockId === "totals-block") {
+    return [
+      {
+        id: createNodeId(template, "totals-block"),
+        type: "group",
+        name: "Totals Block",
+        frame: { x, y, width: 260, height: 92 },
+        children: [
+          blockTextNode(template, "subtotal-label", 0, 0, 104, 18, "Subtotal", 12, 650),
+          blockTextNode(template, "subtotal-value", 124, 0, 120, 18, "{{totals.subtotal}}", 12, 600, "right"),
+          blockTextNode(template, "tax-label", 0, 28, 104, 18, "Tax", 12, 650),
+          blockTextNode(template, "tax-value", 124, 28, 120, 18, "{{totals.tax}}", 12, 600, "right"),
+          blockTextNode(template, "total-label", 0, 62, 104, 20, "Total", 14, 750),
+          blockTextNode(template, "total-value", 124, 62, 120, 20, "{{totals.total}}", 14, 750, "right"),
+        ],
+      } satisfies GroupNode,
+    ];
+  }
+
+  return [
+    {
+      id: createNodeId(template, "code-block"),
+      type: "group",
+      name: "Barcode / QR Block",
+      frame: { x, y, width: 300, height: 96 },
+      children: [
+        {
+          id: createNodeId(template, "qr-code"),
+          type: "qr",
+          frame: { x: 0, y: 0, width: 72, height: 72 },
+          value: { kind: "binding", binding: { path: "shipment.trackingUrl" } },
+        } satisfies QrNode,
+        {
+          id: createNodeId(template, "tracking-barcode"),
+          type: "barcode",
+          format: "code128",
+          frame: { x: 92, y: 16, width: 196, height: 48 },
+          value: { kind: "binding", binding: { path: "shipment.trackingNumber" } },
+        } satisfies BarcodeNode,
+      ],
+    } satisfies GroupNode,
+  ];
+}
+
+function addressBlockColumn(
+  template: DocumentTemplate,
+  prefix: string,
+  label: string,
+  body: string,
+  x: number,
+): GroupNode {
+  return {
+    id: createNodeId(template, `${prefix}-address-column`),
+    type: "group",
+    name: label,
+    frame: { x, y: 0, width: 164, height: 108 },
+    children: [
+      {
+        id: createNodeId(template, `${prefix}-address-bg`),
+        type: "shape",
+        shape: "rectangle",
+        frame: { x: 0, y: 0, width: 164, height: 108 },
+        style: { fill: "#ffffff", stroke: "#d8dee8", strokeWidth: 1, radius: 4 },
+      } satisfies ShapeNode,
+      blockTextNode(template, `${prefix}-address-label`, 12, 12, 128, 14, label, 10, 750),
+      blockTextNode(template, `${prefix}-address-body`, 12, 34, 132, 56, body, 11, 500),
+    ],
+  };
+}
+
+function blockTextNode(
+  template: DocumentTemplate,
+  prefix: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  text: string,
+  fontSize: number,
+  fontWeight: number,
+  align?: TextNode["style"]["align"],
+): TextNode {
+  return {
+    id: createNodeId(template, prefix),
+    type: "text",
+    frame: { x, y, width, height },
+    content: parseInlineContent(text),
+    style: {
+      fontFamily: "Geist",
+      fontSize,
+      fontWeight,
+      lineHeight: 1.2,
+      color: "#111827",
+      align,
+    },
+  };
+}
+
+function scopedArrayChildPath(arrayPath: string, childPath: string): string {
+  const prefix = `${arrayPath}.`;
+  return childPath.startsWith(prefix)
+    ? `item.${childPath.slice(prefix.length)}`
+    : childPath;
+}
+
+function toColumnId(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || "column";
+}
+
+function uniqueColumnId(baseId: string, used: Set<string>): string {
+  let candidate = baseId;
+  let index = 2;
+
+  while (used.has(candidate)) {
+    candidate = `${baseId}-${index}`;
+    index += 1;
+  }
+
+  used.add(candidate);
+  return candidate;
+}
+
 function snapPoint(
   point: Pick<Frame, "x" | "y">,
   enabled: boolean,
@@ -4420,6 +5852,10 @@ function nextDuplicateNodeId(baseId: string, existingIds: Set<string>): string {
 }
 
 function childCollectionsForNode(node: EditableNode): EditableNode[][] {
+  if (node.type === "shape") {
+    return node.children ? [node.children] : [];
+  }
+
   if (
     node.type === "group" ||
     node.type === "flowRegion" ||
@@ -4440,11 +5876,29 @@ function childCollectionsForNode(node: EditableNode): EditableNode[][] {
     return collections;
   }
 
+  if (node.type === "grid") {
+    return gridChildCollectionsForNode(node);
+  }
+
   if (node.type === "conditional") {
     return node.fallback ? [node.children, node.fallback] : [node.children];
   }
 
   return [];
+}
+
+function gridChildCollectionsForNode(node: GridNode): EditableNode[][] {
+  const rows = [node.header, ...editorGridBodyRows(node), node.footer].filter(
+    (row): row is GridNode["row"] => Boolean(row),
+  );
+
+  return rows.flatMap((row) =>
+    row.cells.map((cell) => cell.content as EditableNode[]),
+  );
+}
+
+function editorGridBodyRows(node: GridNode): GridNode["row"][] {
+  return node.binding ? [node.row] : node.staticRows?.length ? node.staticRows : [node.row];
 }
 
 function getWritableFixedLayer(layers: PageLayer[]): PageLayer | undefined {
@@ -4460,6 +5914,47 @@ function getWritableFixedLayer(layers: PageLayer[]): PageLayer | undefined {
   }
 
   return layer;
+}
+
+function getWritableFlowRegion(
+  page: DocumentTemplate["pages"][number],
+  template: DocumentTemplate,
+): FlowRegionNode {
+  let layer = page.layers.find((candidate) => candidate.kind === "flow");
+
+  if (!layer) {
+    layer = {
+      id: "flow",
+      kind: "flow",
+      nodes: [],
+    };
+    page.layers.push(layer);
+  }
+
+  const existingRegion = layer.nodes.find(
+    (node): node is FlowRegionNode => node.type === "flowRegion",
+  );
+
+  if (existingRegion) {
+    return existingRegion;
+  }
+
+  const margin = page.margin ?? { top: 48, right: 48, bottom: 48, left: 48 };
+  const region: FlowRegionNode = {
+    id: createNodeId(template, "flow-region"),
+    type: "flowRegion",
+    frame: {
+      x: margin.left,
+      y: margin.top,
+      width: Math.max(80, page.size.width - margin.left - margin.right),
+      height: Math.max(80, page.size.height - margin.top - margin.bottom),
+    },
+    flowBoundary: "page-margin",
+    children: [],
+  };
+
+  layer.nodes.push(region);
+  return region;
 }
 
 function createNodeId(template: DocumentTemplate, prefix: string): string {
@@ -4486,33 +5981,8 @@ function collectNodeIds(nodes: EditableNode[], ids: Set<string>): void {
   for (const node of nodes) {
     ids.add(node.id);
 
-    if (
-      node.type === "group" ||
-      node.type === "flowRegion" ||
-      node.type === "section" ||
-      node.type === "stack"
-    ) {
-      collectNodeIds(node.children, ids);
-    }
-
-    if (node.type === "repeat") {
-      collectNodeIds(node.children, ids);
-
-      if (node.header) {
-        collectNodeIds(node.header, ids);
-      }
-
-      if (node.emptyState) {
-        collectNodeIds(node.emptyState, ids);
-      }
-    }
-
-    if (node.type === "conditional") {
-      collectNodeIds(node.children, ids);
-
-      if (node.fallback) {
-        collectNodeIds(node.fallback, ids);
-      }
+    for (const children of childCollectionsForNode(node)) {
+      collectNodeIds(children, ids);
     }
   }
 }
@@ -4824,6 +6294,7 @@ const panelRowResizeHandleStyle: CSSProperties = {
 const mainStyle: CSSProperties = {
   gridColumn: 3,
   gridRow: 2,
+  position: "relative",
   height: "100%",
   minWidth: 0,
   minHeight: 0,
@@ -4960,6 +6431,174 @@ const toolbarIconStyle: CSSProperties = {
   width: 16,
   height: 16,
   flex: "0 0 auto",
+};
+
+const diagnosticsToolbarButtonStyle: CSSProperties = {
+  height: 36,
+  minWidth: 86,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 7,
+  padding: "0 12px",
+  border: "1px solid #d7dce4",
+  borderRadius: 7,
+  background: "#ffffff",
+  color: "#111827",
+  font: `650 12px/1 ${UI_FONT_FAMILY}`,
+  boxShadow: "0 1px 1px rgba(16, 24, 40, 0.02)",
+  cursor: "pointer",
+};
+
+const diagnosticsToolbarButtonOpenStyle: CSSProperties = {
+  borderColor: "#a5b4fc",
+  background: "#eef2ff",
+  color: "#3730a3",
+};
+
+const diagnosticsDotStyle: CSSProperties = {
+  width: 7,
+  height: 7,
+  borderRadius: 999,
+  flex: "0 0 auto",
+};
+
+const diagnosticsDockStyle: CSSProperties = {
+  position: "absolute",
+  right: 18,
+  bottom: 18,
+  zIndex: 80,
+  width: 430,
+  maxWidth: "calc(100% - 36px)",
+  maxHeight: "48%",
+  display: "grid",
+  gridTemplateRows: "auto minmax(0, 1fr)",
+  border: "1px solid #d8dee8",
+  borderRadius: 10,
+  background: "#ffffff",
+  boxShadow: "0 24px 60px rgba(15, 23, 42, 0.16)",
+  overflow: "hidden",
+};
+
+const diagnosticsDockHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 14,
+  padding: "14px 14px 12px",
+  borderBottom: "1px solid #eef0f3",
+};
+
+const diagnosticsDockTitleStyle: CSSProperties = {
+  margin: 0,
+  color: "#0f172a",
+  fontSize: 13,
+  fontWeight: 800,
+};
+
+const diagnosticsDockSubtitleStyle: CSSProperties = {
+  margin: "4px 0 0",
+  color: "#64748b",
+  fontSize: 11,
+  lineHeight: 1.35,
+  fontWeight: 550,
+};
+
+const diagnosticsDockCloseButtonStyle: CSSProperties = {
+  height: 28,
+  padding: "0 9px",
+  border: "1px solid #d7dce4",
+  borderRadius: 6,
+  background: "#ffffff",
+  color: "#475569",
+  font: `650 11px/1 ${UI_FONT_FAMILY}`,
+  cursor: "pointer",
+};
+
+const diagnosticsDockBodyStyle: CSSProperties = {
+  minHeight: 0,
+  overflow: "auto",
+  padding: 12,
+};
+
+const diagnosticsGroupStyle: CSSProperties = {
+  display: "grid",
+  gap: 7,
+  marginBottom: 12,
+};
+
+const diagnosticsGroupHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  color: "#64748b",
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: 0.5,
+  textTransform: "uppercase",
+};
+
+const diagnosticRowStyle: CSSProperties = {
+  position: "relative",
+  minWidth: 0,
+  width: "100%",
+  display: "grid",
+  gridTemplateColumns: "4px minmax(0, 1fr)",
+  gap: 10,
+  padding: "10px 10px 10px 0",
+  border: "1px solid #e3e6eb",
+  borderRadius: 8,
+  background: "#f8fafc",
+  textAlign: "left",
+  fontFamily: UI_FONT_FAMILY,
+};
+
+const diagnosticSeverityRailStyle: CSSProperties = {
+  width: 4,
+  alignSelf: "stretch",
+  borderRadius: "8px 0 0 8px",
+};
+
+const diagnosticRowContentStyle: CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gap: 4,
+};
+
+const diagnosticRowMetaStyle: CSSProperties = {
+  color: "#64748b",
+  fontSize: 10,
+  fontWeight: 750,
+  textTransform: "uppercase",
+  letterSpacing: 0.25,
+};
+
+const diagnosticRowMessageStyle: CSSProperties = {
+  color: "#0f172a",
+  fontSize: 12,
+  lineHeight: 1.35,
+  fontWeight: 650,
+};
+
+const diagnosticRowTargetStyle: CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  color: "#64748b",
+  fontSize: 11,
+  fontFamily: UI_MONO_FONT_FAMILY,
+};
+
+const diagnosticsEmptyStateStyle: CSSProperties = {
+  padding: 18,
+  border: "1px dashed #cbd5e1",
+  borderRadius: 8,
+  background: "#f8fafc",
+  color: "#64748b",
+  fontSize: 12,
+  lineHeight: 1.5,
+  textAlign: "center",
 };
 
 const dropdownWrapStyle: CSSProperties = {
@@ -5126,6 +6765,33 @@ const selectionHandleStyle: CSSProperties = {
   border: "1px solid #2563eb",
   borderRadius: 2,
   background: "#ffffff",
+};
+
+const selectionActionBarStyle: CSSProperties = {
+  position: "absolute",
+  left: 0,
+  top: 0,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: 4,
+  border: `1px solid ${UI_CHROME_BORDER}`,
+  borderRadius: 7,
+  background: "#ffffff",
+  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.14)",
+  pointerEvents: "auto",
+  whiteSpace: "nowrap",
+};
+
+const selectionActionButtonStyle: CSSProperties = {
+  height: 24,
+  padding: "0 7px",
+  border: "1px solid transparent",
+  borderRadius: 5,
+  background: "transparent",
+  color: "#334155",
+  font: `650 10px/1 ${UI_FONT_FAMILY}`,
+  cursor: "pointer",
 };
 
 const repeatPlaceholderStyle: CSSProperties = {
@@ -5408,13 +7074,177 @@ const layerMetaStyle: CSSProperties = {
 const dataPanelStyle: CSSProperties = {
   minHeight: 0,
   borderTop: "1px solid #e5e7eb",
-  overflow: "hidden",
+  overflowY: "auto",
+  overflowX: "hidden",
 };
 
 const dataFieldsStyle: CSSProperties = {
-  height: 178,
-  overflowY: "auto",
+  overflowY: "visible",
   padding: "0 10px 12px",
+};
+
+const blockInsertPanelStyle: CSSProperties = {
+  display: "grid",
+  gap: 7,
+  margin: "0 10px 10px",
+  padding: 8,
+  border: `1px solid ${UI_CHROME_BORDER}`,
+  borderRadius: UI_CHROME_RADIUS,
+  background: "#fbfcfe",
+};
+
+const blockInsertHeaderStyle: CSSProperties = {
+  color: "#0f172a",
+  fontSize: 10,
+  fontWeight: 850,
+  textTransform: "uppercase",
+};
+
+const blockInsertGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 6,
+};
+
+const blockInsertButtonStyle: CSSProperties = {
+  minHeight: 26,
+  padding: "5px 7px",
+  border: `1px solid ${UI_CHROME_BORDER}`,
+  borderRadius: 5,
+  background: "#ffffff",
+  color: "#334155",
+  font: `650 10px/1.2 ${UI_FONT_FAMILY}`,
+  textAlign: "left",
+  cursor: "pointer",
+};
+
+const dataAuthoringToolbarStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 6,
+  margin: "0 10px 8px",
+};
+
+const sampleEditorStyle: CSSProperties = {
+  display: "grid",
+  gap: 7,
+  margin: "0 10px 10px",
+  padding: 8,
+  border: `1px solid ${UI_CHROME_BORDER}`,
+  borderRadius: UI_CHROME_RADIUS,
+  background: "#ffffff",
+};
+
+const sampleEditorTextareaStyle: CSSProperties = {
+  width: "100%",
+  minHeight: 122,
+  resize: "vertical",
+  boxSizing: "border-box",
+  padding: 8,
+  border: `1px solid ${UI_CHROME_BORDER}`,
+  borderRadius: 5,
+  outline: "none",
+  background: "#f8fafc",
+  color: "#111827",
+  font: `11px/1.45 ${UI_MONO_FONT_FAMILY}`,
+};
+
+const sampleEditorErrorStyle: CSSProperties = {
+  color: "#b42318",
+  font: `600 10px/1.35 ${UI_FONT_FAMILY}`,
+};
+
+const sampleEditorActionsStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: 6,
+};
+
+const sampleEditorButtonStyle: CSSProperties = {
+  height: 26,
+  padding: "0 9px",
+  border: `1px solid ${UI_CHROME_BORDER}`,
+  borderRadius: 5,
+  background: "#ffffff",
+  color: "#334155",
+  font: `650 10px/1 ${UI_FONT_FAMILY}`,
+  cursor: "pointer",
+};
+
+const sampleEditorPrimaryButtonStyle: CSSProperties = {
+  borderColor: "#6366f1",
+  background: "#6366f1",
+  color: "#ffffff",
+};
+
+const schemaEditorStyle: CSSProperties = {
+  display: "grid",
+  gap: 7,
+  margin: "0 10px 10px",
+  padding: 8,
+  border: `1px solid ${UI_CHROME_BORDER}`,
+  borderRadius: UI_CHROME_RADIUS,
+  background: "#fbfcfe",
+};
+
+const schemaEditorHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  color: "#0f172a",
+  fontSize: 10,
+  fontWeight: 850,
+  textTransform: "uppercase",
+};
+
+const schemaAddButtonStyle: CSSProperties = {
+  height: 22,
+  padding: "0 7px",
+  border: `1px solid ${UI_CHROME_BORDER}`,
+  borderRadius: 4,
+  background: "#ffffff",
+  color: "#334155",
+  font: `700 10px/1 ${UI_FONT_FAMILY}`,
+  cursor: "pointer",
+};
+
+const schemaFieldEditorStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 5,
+  padding: 6,
+  border: "1px solid #eef0f3",
+  borderRadius: 5,
+  background: "#ffffff",
+};
+
+const schemaInputStyle: CSSProperties = {
+  minWidth: 0,
+  height: 26,
+  padding: "0 7px",
+  border: `1px solid ${UI_CHROME_BORDER}`,
+  borderRadius: 5,
+  outline: "none",
+  background: "#f8fafc",
+  color: "#111827",
+  font: `600 10px/1 ${UI_FONT_FAMILY}`,
+};
+
+const schemaSelectStyle: CSSProperties = {
+  ...schemaInputStyle,
+  background: "#ffffff",
+};
+
+const schemaDeleteButtonStyle: CSSProperties = {
+  height: 26,
+  padding: "0 7px",
+  border: "1px solid #fee2e2",
+  borderRadius: 5,
+  background: "#fff7f7",
+  color: "#b42318",
+  font: `700 10px/1 ${UI_FONT_FAMILY}`,
+  cursor: "pointer",
 };
 
 const dataPanelStatusStyle: CSSProperties = {

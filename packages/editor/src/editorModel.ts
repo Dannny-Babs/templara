@@ -461,6 +461,14 @@ function groupSiblingsInCollection(
     .filter((index) => index >= 0);
 
   if (indices.length !== nodeIds.length) {
+    for (const node of nodes) {
+      for (const children of getChildCollections(node)) {
+        if (groupSiblingsInCollection(children, nodeIds, groupId)) {
+          return true;
+        }
+      }
+    }
+
     return false;
   }
 
@@ -657,6 +665,10 @@ function getContainerContentOrigin(
   container: EditorNodeItem,
   itemMap: Map<string, EditorNodeItem>,
 ): { x: number; y: number } | undefined {
+  if (container.node.type === "grid") {
+    return gridPrimaryContentOrigin(container.node, container.absoluteFrame);
+  }
+
   const collections = getChildCollections(container.node);
   const firstChild = collections[0]?.[0];
   const childItem = firstChild ? itemMap.get(firstChild.id) : undefined;
@@ -1000,6 +1012,10 @@ function renderNode(
     return renderRepeatNode(node, context, path);
   }
 
+  if (node.type === "grid") {
+    return renderGridNode(node, context, path);
+  }
+
   return [
     createLeafNode(node, context, offsetFrame(node.frame, context.origin)),
   ];
@@ -1097,6 +1113,77 @@ function renderRepeatNode(
     ...(header.length > 0 ? renderNodeCollection(header, headerContext) : []),
     ...renderNodeCollection(node.children, rowContext),
   ];
+}
+
+function renderGridNode(
+  node: GridNode,
+  context: RenderContext,
+  path: string,
+): EditorRenderNode[] {
+  const absoluteFrame = editorFrameForNode(node, context.origin);
+  const children: EditorRenderNode[] = [];
+  let rowY = absoluteFrame.y;
+
+  if (node.header) {
+    children.push(
+      ...renderGridRowTemplate(node, node.header, context, path, rowY, "header"),
+    );
+    rowY += measureEditorGridRowHeight(node, node.header);
+  }
+
+  for (const [index, row] of editorGridBodyRows(node).entries()) {
+    children.push(
+      ...renderGridRowTemplate(node, row, context, `${path}.row.${index}`, rowY, "row"),
+    );
+    rowY += measureEditorGridRowHeight(node, row);
+  }
+
+  if (node.footer) {
+    children.push(
+      ...renderGridRowTemplate(node, node.footer, context, path, rowY, "footer"),
+    );
+  }
+
+  return [
+    createContainerNode(node, context, absoluteFrame, "grid", gridLabel(node)),
+    ...children,
+  ];
+}
+
+function renderGridRowTemplate(
+  node: GridNode,
+  row: GridNode["row"],
+  context: RenderContext,
+  path: string,
+  rowY: number,
+  rowKind: "header" | "row" | "footer",
+): EditorRenderNode[] {
+  const rendered: EditorRenderNode[] = [];
+  const gridAbsolute = editorFrameForNode(node, context.origin);
+  let columnX = 0;
+
+  for (const column of node.columns) {
+    const cell = findGridCell(row, column.id);
+
+    if (cell) {
+      rendered.push(
+        ...renderNodeCollection(cell.content, {
+          ...context,
+          depth: context.depth + 1,
+          parentPath: `${path}.${rowKind}.${column.id}`,
+          parentId: node.id,
+          origin: {
+            x: gridAbsolute.x + columnX,
+            y: rowY,
+          },
+        }),
+      );
+    }
+
+    columnX += column.width;
+  }
+
+  return rendered;
 }
 
 function renderSectionNode(
@@ -1375,6 +1462,18 @@ function collectNodes(
       ];
     }
 
+    if (node.type === "grid") {
+      return [
+        current,
+        ...collectGridNodes(node, {
+          ...context,
+          depth: context.depth + 1,
+          parentPath: path,
+          origin: absoluteFrame,
+        }),
+      ];
+    }
+
     const children = getChildCollections(node).flatMap(
       (childNodes, childIndex) =>
         collectNodes(childNodes, {
@@ -1468,6 +1567,84 @@ function collectStackNodes(
   return items;
 }
 
+function collectGridNodes(
+  node: GridNode,
+  context: Pick<
+    EditorNodeItem,
+    "pageId" | "layerId" | "layerKind" | "depth"
+  > & { parentPath: string; origin: Pick<Frame, "x" | "y"> },
+): EditorNodeItem[] {
+  const items: EditorNodeItem[] = [];
+  let rowY = context.origin.y;
+
+  if (node.header) {
+    items.push(
+      ...collectGridRowNodes(node, node.header, {
+        ...context,
+        parentPath: `${context.parentPath}.header`,
+        origin: { x: context.origin.x, y: rowY },
+      }),
+    );
+    rowY += measureEditorGridRowHeight(node, node.header);
+  }
+
+  for (const [index, row] of editorGridBodyRows(node).entries()) {
+    items.push(
+      ...collectGridRowNodes(node, row, {
+        ...context,
+        parentPath: `${context.parentPath}.row.${index}`,
+        origin: { x: context.origin.x, y: rowY },
+      }),
+    );
+    rowY += measureEditorGridRowHeight(node, row);
+  }
+
+  if (node.footer) {
+    items.push(
+      ...collectGridRowNodes(node, node.footer, {
+        ...context,
+        parentPath: `${context.parentPath}.footer`,
+        origin: { x: context.origin.x, y: rowY },
+      }),
+    );
+  }
+
+  return items;
+}
+
+function collectGridRowNodes(
+  node: GridNode,
+  row: GridNode["row"],
+  context: Pick<
+    EditorNodeItem,
+    "pageId" | "layerId" | "layerKind" | "depth"
+  > & { parentPath: string; origin: Pick<Frame, "x" | "y"> },
+): EditorNodeItem[] {
+  const items: EditorNodeItem[] = [];
+  let columnX = 0;
+
+  for (const column of node.columns) {
+    const cell = findGridCell(row, column.id);
+
+    if (cell) {
+      items.push(
+        ...collectNodes(cell.content, {
+          ...context,
+          parentPath: `${context.parentPath}.${column.id}`,
+          origin: {
+            x: context.origin.x + columnX,
+            y: context.origin.y,
+          },
+        }),
+      );
+    }
+
+    columnX += column.width;
+  }
+
+  return items;
+}
+
 function updateNodeInCollection(
   nodes: EditableNode[],
   nodeId: string,
@@ -1541,6 +1718,8 @@ function getChildCollections(node: EditableNode): EditableNode[][] {
       }
       return collections;
     }
+    case "grid":
+      return gridChildCollections(node);
     case "conditional":
       return node.fallback ? [node.children, node.fallback] : [node.children];
     default:
@@ -1562,6 +1741,7 @@ function isContainerNode(node: EditableNode): boolean {
     case "stack":
     case "repeat":
     case "conditional":
+    case "grid":
       return true;
     default:
       return false;
@@ -1581,6 +1761,10 @@ function getWritableChildCollection(
       node.children = [];
     }
     return node.children as EditableNode[];
+  }
+
+  if (node.type === "grid") {
+    return getGridPrimaryContentCollection(node);
   }
 
   return getChildCollections(node)[0];
@@ -1605,6 +1789,10 @@ function measureEditorFlowNodeHeight(node: FlowNode): number {
 
   if (node.type === "repeat") {
     return repeatEditorHeight(node);
+  }
+
+  if (node.type === "grid") {
+    return gridEditorHeight(node);
   }
 
   return node.frame.height;
@@ -1633,6 +1821,10 @@ function measureNodeHeight(node: DocNode | FlowNode): number {
 
   if (node.type === "stack") {
     return Math.max(node.frame.height, measureStackHeight(node));
+  }
+
+  if (node.type === "grid") {
+    return gridEditorHeight(node);
   }
 
   return node.frame.height;
@@ -1787,6 +1979,91 @@ function repeatEditorHeight(node: RepeatNode): number {
   );
 }
 
+function gridEditorHeight(node: GridNode): number {
+  const headerHeight = node.header
+    ? measureEditorGridRowHeight(node, node.header)
+    : 0;
+  const bodyHeight = editorGridBodyRows(node).reduce(
+    (height, row) => height + measureEditorGridRowHeight(node, row),
+    0,
+  );
+  const footerHeight = node.footer
+    ? measureEditorGridRowHeight(node, node.footer)
+    : 0;
+
+  return Math.max(node.frame.height, headerHeight + bodyHeight + footerHeight);
+}
+
+function measureEditorGridRowHeight(
+  node: GridNode,
+  row: GridNode["row"],
+): number {
+  const contentBottom = row.cells.reduce((bottom, cell) => {
+    const cellBottom = cell.content.reduce(
+      (max, child) =>
+        Math.max(max, child.frame.y + measureEditorFlowNodeHeight(child)),
+      0,
+    );
+    return Math.max(bottom, cellBottom);
+  }, 0);
+
+  return Math.max(node.rowHeight, contentBottom);
+}
+
+function gridChildCollections(node: GridNode): EditableNode[][] {
+  const rows = [node.header, ...editorGridBodyRows(node), node.footer].filter(
+    (row): row is GridNode["row"] => Boolean(row),
+  );
+
+  return rows.flatMap((row) =>
+    row.cells.map((cell) => cell.content as EditableNode[]),
+  );
+}
+
+function getGridPrimaryContentCollection(
+  node: GridNode,
+): EditableNode[] | undefined {
+  const firstColumn = node.columns[0];
+  const bodyRow = editorGridBodyRows(node)[0] ?? node.row;
+  const cell = firstColumn
+    ? findGridCell(bodyRow, firstColumn.id)
+    : bodyRow.cells[0];
+
+  return cell?.content as EditableNode[] | undefined;
+}
+
+function gridPrimaryContentOrigin(
+  node: GridNode,
+  absoluteFrame: Pick<Frame, "x" | "y">,
+): Pick<Frame, "x" | "y"> | undefined {
+  const firstColumn = node.columns[0];
+  const bodyRow = editorGridBodyRows(node)[0] ?? node.row;
+  const cell = firstColumn
+    ? findGridCell(bodyRow, firstColumn.id)
+    : bodyRow.cells[0];
+
+  if (!cell) {
+    return undefined;
+  }
+
+  const headerHeight = node.header
+    ? measureEditorGridRowHeight(node, node.header)
+    : 0;
+
+  return {
+    x: absoluteFrame.x,
+    y: absoluteFrame.y + headerHeight,
+  };
+}
+
+function findGridCell(row: GridNode["row"], columnId: string) {
+  return row.cells.find((cell) => cell.columnId === columnId);
+}
+
+function editorGridBodyRows(node: GridNode): GridNode["row"][] {
+  return node.binding ? [node.row] : node.staticRows?.length ? node.staticRows : [node.row];
+}
+
 function bindingPlaceholder(binding: BindingRef): string {
   return `{{${binding.path}}}`;
 }
@@ -1824,6 +2101,13 @@ function editorFrameForNode(
       ...frame,
       width: measureStackWidth(node),
       height: measureStackHeight(node),
+    };
+  }
+
+  if (node.type === "grid") {
+    return {
+      ...frame,
+      height: gridEditorHeight(node),
     };
   }
 

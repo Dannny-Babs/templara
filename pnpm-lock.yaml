@@ -71,6 +71,9 @@ importers:
 
   apps/studio:
     dependencies:
+      '@templara/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@templara/editor':
         specifier: workspace:*
         version: link:../../packages/editor

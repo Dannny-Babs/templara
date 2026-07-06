@@ -64,6 +64,18 @@ describe("editor shortcut resolution", () => {
   it("maps selected-node commands", () => {
     expect(
       resolveEditorShortcut(
+        { key: "c", metaKey: true },
+        { previewOpen: false, selectedCount: 1, tools },
+      ),
+    ).toEqual({ type: "copy" });
+    expect(
+      resolveEditorShortcut(
+        { key: "v", metaKey: true },
+        { previewOpen: false, selectedCount: 0, tools },
+      ),
+    ).toEqual({ type: "paste" });
+    expect(
+      resolveEditorShortcut(
         { key: "Backspace" },
         { previewOpen: false, selectedCount: 2, tools },
       ),

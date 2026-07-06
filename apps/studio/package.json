@@ -11,6 +11,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@templara/core": "workspace:*",
     "@templara/editor": "workspace:*",
     "@templara/templates": "workspace:*",
     "react": "^19.0.0",

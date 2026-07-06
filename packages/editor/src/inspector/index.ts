@@ -14,6 +14,7 @@ import {
   EyeOffIcon,
   File02Icon,
   FrameIcon,
+  GridTableIcon,
   Image01Icon,
   InformationCircleIcon,
   Link01Icon,
@@ -45,6 +46,7 @@ import type {
   FormulaExpression,
   FormulaOperand,
   Frame,
+  GridNode,
   ImageNode,
   PageTemplate,
   QrNode,
@@ -61,6 +63,21 @@ import {
   isFieldBindableForNode,
   sampleValueForBindingPath
 } from "../dataExplorer";
+import {
+  addGridStaticRow,
+  addGridColumn,
+  bindGridColumn,
+  removeGridColumn,
+  removeGridStaticRow,
+  setGridCellPadding,
+  setGridCellStyle,
+  setGridAllowRowSplit,
+  setGridColumnLabel,
+  setGridColumnWidth,
+  setGridFooterEnabled,
+  setGridHeaderEnabled,
+  setGridRepeatHeaderOnBreak
+} from "../gridModel";
 import { insertBindingToken, parseInlineContent, serializeInlineContent } from "../textContent";
 
 export type EditableNode = DocNode | FlowNode;
@@ -630,6 +647,9 @@ function nodeHeaderChips(item: EditorNodeItem): string[] {
   if (node.type === "repeat") {
     return ["Repeat", node.layout.direction === "horizontal" ? "Columns" : "Rows"];
   }
+  if (node.type === "grid") {
+    return ["Table", `${node.columns.length} columns`, node.binding ? "Bound" : "Static"];
+  }
   if (node.type === "barcode") {
     return ["Barcode", node.format];
   }
@@ -782,6 +802,19 @@ function NodeLayoutTab({
     );
   }
 
+  if (node.type === "grid") {
+    return createElement(
+      SectionStack,
+      null,
+      createElement(PositionSection, { targetId: `node:${item.id}`, frame: item.frame, onFrameCommit }),
+      createElement(GridStructureSection, { node, onNodeCommit }),
+      createElement(GridColumnsSection, { node, onNodeCommit }),
+      createElement(GridCellStyleSection, { node, onNodeCommit }),
+      createElement(GridBehaviorSection, { node, onNodeCommit }),
+      createElement(VisibilitySection, { node, onNodeCommit })
+    );
+  }
+
   if (node.type === "image") {
     return createElement(
       SectionStack,
@@ -833,6 +866,15 @@ function NodeDataTab({
       null,
       createElement(RepeatDataSection, { template, data, item, nodeItems, node, onNodeCommit }),
       createElement(RepeatDiagnosticsSection, { data, node })
+    );
+  }
+
+  if (node.type === "grid") {
+    return createElement(
+      SectionStack,
+      null,
+      createElement(GridDataSection, { template, data, item, nodeItems, node, onNodeCommit }),
+      createElement(BindingExplorerSection, { template, data, item, nodeItems, onNodeCommit, showCurrentBinding: false })
     );
   }
 
@@ -2642,6 +2684,398 @@ function RepeatDiagnosticsSection({ data, node }: { data?: Record<string, unknow
       createElement("span", { style: lowRiskPillStyle }, "Low")
     )
   );
+}
+
+function GridStructureSection({ node, onNodeCommit }: { node: GridNode; onNodeCommit: (update: (node: EditableNode) => void) => void }): ReactElement {
+  const bodyRowCount = gridBodyRowCount(node);
+
+  return createElement(
+    InspectorSection,
+    { targetId: `node:${node.id}`, sectionId: "grid-structure", title: "Table Structure", detail: `${node.columns.length} columns` },
+    createElement(
+      "div",
+      { style: twoColumnGridStyle },
+      createElement(NumberControl, {
+        label: "Row height",
+        value: node.rowHeight,
+        onCommit: (value) =>
+          onNodeCommit((draft) => {
+            if (draft.type === "grid") draft.rowHeight = Math.max(12, Math.round(value));
+          })
+      }),
+      createElement(NumberControl, {
+        label: "Table width",
+        value: node.frame.width,
+        disabled: true,
+        onCommit: () => undefined
+      })
+    ),
+    createElement(ToggleSwitch, {
+      label: "Header row",
+      checked: Boolean(node.header),
+      onChange: () =>
+        onNodeCommit((draft) => {
+          if (draft.type === "grid") setGridHeaderEnabled(draft, !draft.header);
+        })
+    }),
+    createElement(ToggleSwitch, {
+      label: "Footer row",
+      checked: Boolean(node.footer),
+      onChange: () =>
+        onNodeCommit((draft) => {
+          if (draft.type === "grid") setGridFooterEnabled(draft, !draft.footer);
+        })
+    }),
+    createElement(FieldRow, { label: "Rows", value: `${node.header ? 1 : 0} header / ${bodyRowCount} body / ${node.footer ? 1 : 0} footer` }),
+    node.binding
+      ? createElement(EmptyText, null, "Bound tables render body rows from array data. Remove the data source to author static rows.")
+      : createElement(
+          "div",
+          { style: gridInlineActionRowStyle },
+          createElement(
+            "button",
+            {
+              type: "button",
+              onClick: () =>
+                onNodeCommit((draft) => {
+                  if (draft.type === "grid") addGridStaticRow(draft);
+                }),
+              style: secondaryButtonStyle
+            },
+            "Add static row"
+          ),
+          createElement(
+            "button",
+            {
+              type: "button",
+              disabled: bodyRowCount <= 1,
+              onClick: () =>
+                onNodeCommit((draft) => {
+                  if (draft.type === "grid") removeGridStaticRow(draft, bodyRowCount - 1);
+                }),
+              style: {
+                ...secondaryButtonStyle,
+                color: bodyRowCount <= 1 ? "#94a3b8" : "#b91c1c",
+                cursor: bodyRowCount <= 1 ? "not-allowed" : "pointer"
+              }
+            },
+            "Remove row"
+          )
+        ),
+    createElement("span", { style: nodeHintStyle }, "Table rows and cells are editable groups on the canvas.")
+  );
+}
+
+function GridColumnsSection({ node, onNodeCommit }: { node: GridNode; onNodeCommit: (update: (node: EditableNode) => void) => void }): ReactElement {
+  return createElement(
+    InspectorSection,
+    {
+      targetId: `node:${node.id}`,
+      sectionId: "grid-columns",
+      title: "Columns",
+      detail: `${node.columns.length}`,
+      headerAction: createElement(SectionHeaderIconButton, {
+        icon: Add01Icon,
+        title: "Add column",
+        onClick: () =>
+          onNodeCommit((draft) => {
+            if (draft.type === "grid") addGridColumn(draft, { label: "Column" });
+          })
+      })
+    },
+    createElement(
+      "div",
+      { style: gridColumnListStyle },
+      node.columns.map((column) =>
+        createElement(
+          "div",
+          { key: column.id, style: gridColumnCardStyle },
+          createElement(
+            "div",
+            { style: conditionHeaderStyle },
+            createElement("span", { style: conditionTitleStyle }, column.label ?? titleCase(column.id)),
+            createElement(
+              "div",
+              { style: inlineButtonGroupStyle },
+              createElement(MiniActionButton, {
+                icon: Copy01Icon,
+                title: "Copy column id",
+                onClick: () => void navigator.clipboard?.writeText(column.id)
+              }),
+              createElement(
+                "button",
+                {
+                  type: "button",
+                  title: node.columns.length <= 1 ? "A table needs at least one column" : "Remove column",
+                  disabled: node.columns.length <= 1,
+                  onClick: () =>
+                    onNodeCommit((draft) => {
+                      if (draft.type === "grid") removeGridColumn(draft, column.id);
+                    }),
+                  style: {
+                    ...miniActionButtonStyle,
+                    opacity: node.columns.length <= 1 ? 0.42 : 1,
+                    cursor: node.columns.length <= 1 ? "not-allowed" : "pointer"
+                  }
+                },
+                createElement(ToolIcon, { icon: Delete02Icon, size: 12 })
+              )
+            )
+          ),
+          createElement(
+            "div",
+            { style: twoColumnGridStyle },
+            createElement(TextControl, {
+              label: "Label",
+              value: column.label ?? titleCase(column.id),
+              onCommit: (value) =>
+                onNodeCommit((draft) => {
+                  if (draft.type === "grid") setGridColumnLabel(draft, column.id, value);
+                })
+            }),
+            createElement(NumberControl, {
+              label: "Width",
+              value: column.width,
+              onCommit: (value) =>
+                onNodeCommit((draft) => {
+                  if (draft.type === "grid") setGridColumnWidth(draft, column.id, value);
+                })
+            })
+          ),
+          createElement(FieldRow, { label: "Cell binding", value: `item.${column.id}` })
+        )
+      ),
+      createElement(
+        "button",
+        {
+          type: "button",
+          onClick: () =>
+            onNodeCommit((draft) => {
+              if (draft.type === "grid") addGridColumn(draft, { label: "Column" });
+            }),
+          style: nodeAccentButtonStyle
+        },
+        createElement(ToolIcon, { icon: Add01Icon, size: 14 }),
+        "Add column"
+      )
+    )
+  );
+}
+
+function GridBehaviorSection({ node, onNodeCommit }: { node: GridNode; onNodeCommit: (update: (node: EditableNode) => void) => void }): ReactElement {
+  return createElement(
+    InspectorSection,
+    { targetId: `node:${node.id}`, sectionId: "grid-behavior", title: "Behavior", detail: node.behavior ? "custom" : "default" },
+    createElement(ToggleSwitch, {
+      label: "Repeat header on break",
+      checked: node.behavior?.repeatHeaderOnPageBreak === true,
+      onChange: () =>
+        onNodeCommit((draft) => {
+          if (draft.type === "grid") setGridRepeatHeaderOnBreak(draft, draft.behavior?.repeatHeaderOnPageBreak !== true);
+        })
+    }),
+    createElement(ToggleSwitch, {
+      label: "Allow row split",
+      checked: node.behavior?.allowRowSplit === true,
+      onChange: () =>
+        onNodeCommit((draft) => {
+          if (draft.type === "grid") setGridAllowRowSplit(draft, draft.behavior?.allowRowSplit !== true);
+        })
+    }),
+    createElement("span", { style: nodeHintStyle }, "These are renderer-backed table behavior flags.")
+  );
+}
+
+function GridCellStyleSection({ node, onNodeCommit }: { node: GridNode; onNodeCommit: (update: (node: EditableNode) => void) => void }): ReactElement {
+  const firstCell = firstGridCell(node);
+  const firstChild = firstCell?.content[0];
+  const padding = firstChild?.frame.x ?? 8;
+  const style = firstCell?.style ?? {};
+
+  return createElement(
+    InspectorSection,
+    { targetId: `node:${node.id}`, sectionId: "grid-cell-style", title: "Cell Appearance", detail: "all cells" },
+    createElement(
+      "div",
+      { style: twoColumnGridStyle },
+      createElement(TextControl, {
+        label: "Fill",
+        value: style.fill ?? "#ffffff",
+        onCommit: (value) =>
+          onNodeCommit((draft) => {
+            if (draft.type === "grid") updateAllGridCells(draft, (rowKind, columnId, rowIndex) => setGridCellStyle(draft, rowKind, columnId, { fill: normalizeHexColor(value) }, rowIndex));
+          })
+      }),
+      createElement(TextControl, {
+        label: "Border",
+        value: style.stroke ?? "#d8dee8",
+        onCommit: (value) =>
+          onNodeCommit((draft) => {
+            if (draft.type === "grid") updateAllGridCells(draft, (rowKind, columnId, rowIndex) => setGridCellStyle(draft, rowKind, columnId, { stroke: normalizeHexColor(value) }, rowIndex));
+          })
+      }),
+      createElement(NumberControl, {
+        label: "Border width",
+        value: Number(style.strokeWidth ?? 1),
+        onCommit: (value) =>
+          onNodeCommit((draft) => {
+            if (draft.type === "grid") updateAllGridCells(draft, (rowKind, columnId, rowIndex) => setGridCellStyle(draft, rowKind, columnId, { strokeWidth: Math.max(0, value) }, rowIndex));
+          })
+      }),
+      createElement(NumberControl, {
+        label: "Padding",
+        value: padding,
+        onCommit: (value) =>
+          onNodeCommit((draft) => {
+            if (draft.type === "grid") updateAllGridCells(draft, (rowKind, columnId, rowIndex) => setGridCellPadding(draft, rowKind, columnId, value, rowIndex));
+          })
+      })
+    ),
+    createElement("span", { style: nodeHintStyle }, "These controls mutate real cell templates and affect Preview/export.")
+  );
+}
+
+function GridDataSection({
+  template,
+  data,
+  item,
+  nodeItems,
+  node,
+  onNodeCommit
+}: {
+  template: DocumentTemplate;
+  data?: Record<string, unknown>;
+  item: EditorNodeItem;
+  nodeItems: EditorNodeItem[];
+  node: GridNode;
+  onNodeCommit: (update: (node: EditableNode) => void) => void;
+}): ReactElement {
+  const bindingPath = node.binding?.path ?? "";
+  const explorer = buildDataExplorerModel({ template, data, nodeItems, selectedNodeIds: [item.id] });
+  const scopeFields = explorer.groups.find((group) => group.id === "scope")?.fields ?? [];
+  const bindableFields = gridColumnFieldOptions(explorer);
+  const sample = sampleValueForRawPath(data, bindingPath);
+  const sampleRows = Array.isArray(sample) ? sample.length : 0;
+
+  return createElement(
+    InspectorSection,
+    { targetId: `node:${node.id}`, sectionId: "grid-data", title: "Data", detail: bindingPath || "static" },
+    createElement(BindingControl, {
+      label: "Data source",
+      value: bindingPath,
+      onCommit: (value) =>
+        onNodeCommit((draft) => {
+          if (draft.type !== "grid") return;
+          const path = value.trim();
+          draft.binding = path ? { path } : undefined;
+        })
+    }),
+    createElement(FieldRow, { label: "Sample rows", value: sampleRows ? String(sampleRows) : formatSampleValue(sample) }),
+    createElement(FieldRow, { label: "Row alias", value: "item" }),
+    createElement(
+      "div",
+      { style: gridColumnListStyle },
+      node.columns.map((column) =>
+        createElement(
+          "div",
+          { key: column.id, style: gridColumnCardStyle },
+          createElement(FieldRow, { label: "Column", value: column.label ?? titleCase(column.id) }),
+          createElement(SelectControl, {
+            label: "Column binding",
+            value: gridColumnBindingPath(node, column.id),
+            options: [{ value: "", label: "Unbound" }, ...bindableFields],
+            onChange: (value) =>
+              onNodeCommit((draft) => {
+                if (draft.type === "grid") bindGridColumn(draft, column.id, value);
+              })
+          })
+        )
+      )
+    ),
+    createElement(
+      "div",
+      { style: nodeFieldListStyle },
+      bindingPath && scopeFields.length > 0
+        ? createElement(BindingExplorerGroupRows, {
+            title: "Available item fields",
+            fields: scopeFields,
+            node,
+            onBind: () => undefined
+          })
+        : createElement(EmptyText, null, "Bind the table to an array to expose item.* fields inside cells.")
+    )
+  );
+}
+
+function gridBodyRowsForInspector(node: GridNode): GridNode["row"][] {
+  return node.binding ? [node.row] : node.staticRows?.length ? node.staticRows : [node.row];
+}
+
+function gridBodyRowCount(node: GridNode): number {
+  return gridBodyRowsForInspector(node).length;
+}
+
+function firstGridCell(node: GridNode) {
+  return node.header?.cells[0] ?? gridBodyRowsForInspector(node)[0]?.cells[0] ?? node.footer?.cells[0];
+}
+
+function updateAllGridCells(
+  node: GridNode,
+  update: (rowKind: "header" | "row" | "footer", columnId: string, rowIndex: number) => void,
+): void {
+  if (node.header) {
+    for (const cell of node.header.cells) {
+      update("header", cell.columnId, 0);
+    }
+  }
+
+  for (const [rowIndex, row] of gridBodyRowsForInspector(node).entries()) {
+    for (const cell of row.cells) {
+      update("row", cell.columnId, rowIndex);
+    }
+  }
+
+  if (node.footer) {
+    for (const cell of node.footer.cells) {
+      update("footer", cell.columnId, 0);
+    }
+  }
+}
+
+function gridColumnFieldOptions(explorer: DataExplorerModel): Array<{ value: string; label: string }> {
+  const seen = new Set<string>();
+  const options: Array<{ value: string; label: string }> = [];
+
+  for (const group of explorer.groups) {
+    for (const field of group.fields) {
+      if (!field.bindable || field.kind === "array" || field.kind === "object" || seen.has(field.path)) {
+        continue;
+      }
+
+      seen.add(field.path);
+      options.push({
+        value: field.path,
+        label: `${field.label} · ${field.displayPath ?? field.path}`,
+      });
+    }
+  }
+
+  return options;
+}
+
+function gridColumnBindingPath(node: GridNode, columnId: string): string {
+  for (const row of gridBodyRowsForInspector(node)) {
+    const text = row.cells
+      .find((cell) => cell.columnId === columnId)
+      ?.content.find((child): child is TextNode => child.type === "text");
+    const field = text?.content.find((part) => part.kind === "field");
+
+    if (field?.kind === "field") {
+      return field.binding.path;
+    }
+  }
+
+  return "";
 }
 
 function TextLayoutSection({
@@ -5893,6 +6327,7 @@ function inspectorTitleForItem(item: EditorNodeItem): string {
 function inspectorIconForNode(node: EditableNode): IconSvgElement {
   if (node.type === "text") return TypeCursorIcon;
   if (node.type === "repeat") return RepeatIcon;
+  if (node.type === "grid") return GridTableIcon;
   if (node.type === "conditional") return ThirdBracketIcon;
   if (node.type === "image") return Image01Icon;
   if (node.type === "barcode") return BarcodeIcon;
@@ -7604,6 +8039,22 @@ const conditionCardStyle: CSSProperties = {
   border: "1px solid #eef0f3",
   borderRadius: 8,
   background: "#fbfcfe"
+};
+
+const gridColumnListStyle: CSSProperties = {
+  display: "grid",
+  gap: 8
+};
+
+const gridColumnCardStyle: CSSProperties = {
+  ...conditionCardStyle,
+  gap: 8
+};
+
+const gridInlineActionRowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+  gap: 8
 };
 
 const conditionHeaderStyle: CSSProperties = {

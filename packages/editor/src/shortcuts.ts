@@ -38,10 +38,12 @@ export interface EditorShortcutEventLike {
 }
 
 export type EditorShortcutCommand =
+  | { type: "copy" }
   | { type: "delete" }
   | { type: "duplicate" }
   | { type: "group" }
   | { type: "nudge"; dx: number; dy: number }
+  | { type: "paste" }
   | { type: "redo" }
   | { type: "reorder"; command: ReorderCommand }
   | { type: "select-tool"; tool: InsertTool }
@@ -91,6 +93,14 @@ export function resolveEditorShortcut(
 
   if (hasCommandModifier && lowerKey === "y") {
     return { type: "redo" };
+  }
+
+  if (options.selectedCount > 0 && hasCommandModifier && lowerKey === "c") {
+    return { type: "copy" };
+  }
+
+  if (hasCommandModifier && lowerKey === "v") {
+    return { type: "paste" };
   }
 
   if (

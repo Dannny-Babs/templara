@@ -1176,6 +1176,17 @@ function createGridBodyRowPlans(
   emitWarning: boolean,
   pageId?: string
 ): GridRowPlan[] {
+  if (!node.binding && node.staticRows?.length) {
+    return node.staticRows.map((template, index) => ({
+      kind: "body",
+      template,
+      scope,
+      index,
+      count: node.staticRows?.length ?? 1,
+      height: measureGridRowHeight(state, node, template, scope)
+    }));
+  }
+
   const items = resolveGridItems(state, node, scope, emitWarning, pageId);
 
   return items.map((item, index) => {

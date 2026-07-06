@@ -282,6 +282,8 @@ export interface GridNode extends BaseNode {
   rowHeight: number;
   header?: GridRowTemplate;
   row: GridRowTemplate;
+  /** Authored body rows for static, unbound tables. Bound grids ignore this. */
+  staticRows?: GridRowTemplate[];
   footer?: GridRowTemplate;
   behavior?: GridBehavior;
 }

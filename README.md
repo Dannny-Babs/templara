@@ -31,12 +31,12 @@ That means repeat nodes show as one editable template row in the editor, but exp
 
 ## Current Status
 
-Current active template:
-
-- Shipment BOL
-
 Current editor features:
 
+- blank project by default on first load
+- browser-local project persistence
+- template library for Blank, Invoice, Shipment BOL, Receipt, Pay Stub, and Shipping Label
+- project save/load, rename, duplicate, delete, import, and export
 - fixed viewport app shell
 - icon-only insert rail
 - keyboard shortcuts for tools
@@ -44,7 +44,9 @@ Current editor features:
 - layers panel
 - searchable data panel
 - contextual right inspector
+- table/grid groups with static rows and bound column authoring
 - grid, rulers, guides, and snapping controls
+- unified diagnostics badge and dock
 - bottom-left canvas dock
 - bottom-center page switcher
 - preview overlay
@@ -58,6 +60,7 @@ Current renderer features:
 - repeat expansion
 - repeat row fit calculations
 - pagination for overflow repeat rows
+- semantic grid rendering, including static unbound rows
 - render warnings and diagnostics
 - React preview rendering
 
@@ -106,6 +109,15 @@ packages/
   cli/                 future command-line rendering/export
 ```
 
+Package API references:
+
+- [@templara/core](packages/core/README.md)
+- [@templara/renderer](packages/renderer/README.md)
+- [@templara/react-renderer](packages/react-renderer/README.md)
+- [@templara/editor](packages/editor/README.md)
+- [@templara/pdf](packages/pdf/README.md)
+- [@templara/templates](packages/templates/README.md)
+
 ## Development
 
 Install dependencies from the repo root, then run the Studio app.
@@ -134,9 +146,8 @@ pnpm run build
 
 ## Known Near-Term Work
 
-- Add resize handles, delete/duplicate, nudge, and history polishing.
-- Add real PDF export from Preview.
-- Make inspector controls more complete and fully backed by schema.
-- Improve data binding insertion into text nodes.
-- Expand repeat pagination tests.
-- Add template validation and migration scaffolding.
+- Harden import/export project bundle UX and add more malformed-bundle tests.
+- Expand table editing into direct cell selection, row operations, and column drag resizing.
+- Add richer diagnostics navigation for validation paths that do not map to a node.
+- Move local project persistence behind an IndexedDB/server-ready adapter when binary assets arrive.
+- Prepare npm publishing metadata once package APIs stabilize.

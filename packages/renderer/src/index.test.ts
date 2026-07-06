@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PAGE_PRESETS } from "@templara/core";
-import type { ConditionalNode, DocumentTemplate, GridNode, SectionNode, StackNode } from "@templara/core";
+import type { ConditionalNode, DocumentTemplate, GridNode, GridRowTemplate, SectionNode, StackNode } from "@templara/core";
 import { renderDocument, sanitizeImageUrl } from "./index";
 
 const template: DocumentTemplate = {
@@ -177,6 +177,20 @@ function createItemsGrid(overrides: Partial<Pick<GridNode, "rowHeight" | "behavi
     },
     behavior: overrides.behavior
   };
+}
+
+function setGridRowCellText(
+  row: GridRowTemplate,
+  columnIndex: number,
+  text: string,
+): void {
+  const child = row.cells[columnIndex]?.content[0];
+
+  if (!child || child.type !== "text") {
+    throw new Error("Expected grid test fixture cell to contain a text node.");
+  }
+
+  child.content = [{ kind: "text", text }];
 }
 
 describe("renderDocument", () => {
@@ -513,6 +527,51 @@ describe("renderDocument", () => {
     expect(text).toContain("$20.00");
     expect(gridShapes).toHaveLength(6);
     expect(result.warnings.some((warning) => warning.code === "flow.grid_not_implemented")).toBe(false);
+  });
+
+  it("renders static grid rows when a table is unbound", () => {
+    const gridTemplate = structuredClone(template) as DocumentTemplate;
+    const flowRegion = gridTemplate.pages[0].layers[1].nodes[0];
+    const grid = createItemsGrid();
+
+    if (flowRegion.type !== "flowRegion") {
+      throw new Error("Expected flow region test fixture.");
+    }
+
+    delete grid.binding;
+    grid.staticRows = [
+      grid.row,
+      {
+        cells: grid.row.cells.map((cell) => ({
+          ...cell,
+          content: cell.content.map((child) =>
+            child.type === "text"
+              ? {
+                  ...child,
+                  id: `${child.id}-static-2`,
+                  content:
+                    cell.columnId === "name"
+                      ? [{ kind: "text", text: "Static Beta" }]
+                      : [{ kind: "text", text: "$22.00" }]
+                }
+              : child
+          )
+        }))
+      }
+    ];
+    setGridRowCellText(grid.row, 0, "Static Alpha");
+    setGridRowCellText(grid.row, 1, "$11.00");
+    flowRegion.children = [grid];
+
+    const result = renderDocument({
+      template: gridTemplate,
+      data: { invoice: { number: "INV-STATIC", date: "2026-07-01", items: [] } }
+    });
+    const text = result.pages.flatMap((page) => page.children).filter((node) => node.type === "text").map((node) => node.text);
+
+    expect(text).toContain("Static Alpha");
+    expect(text).toContain("Static Beta");
+    expect(result.warnings.some((warning) => warning.code === "binding.grid_not_array")).toBe(false);
   });
 
   it("paginates semantic grids and repeats headers on continuation pages", () => {

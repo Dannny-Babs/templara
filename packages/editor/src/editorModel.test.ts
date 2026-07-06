@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PAGE_PRESETS } from "@templara/core";
 import type {
   DocumentTemplate,
+  GridNode,
   GroupNode,
   SectionNode,
   ShapeNode,
@@ -11,6 +12,7 @@ import type {
 } from "@templara/core";
 import {
   buildEditorPageModel,
+  collectPageNodeItems,
   findEditableNode,
   getAlignmentFramePatches,
   getResizeFramePatch,
@@ -375,6 +377,117 @@ describe("editor page model", () => {
       text: "{{recipient.name}}",
     });
   });
+
+  it("renders grid tables as containers with editable cell children", () => {
+    const gridTemplate = structuredClone(template) as DocumentTemplate;
+    const fixedLayer = gridTemplate.pages[0].layers[0];
+    const table: GridNode = {
+      id: "handling-table",
+      type: "grid",
+      frame: { x: 100, y: 120, width: 220, height: 48 },
+      binding: { path: "shipment.handlingUnits" },
+      columns: [
+        { id: "qty", label: "QTY", width: 60 },
+        { id: "description", label: "Description", width: 160 },
+      ],
+      rowHeight: 24,
+      header: {
+        cells: [
+          {
+            columnId: "qty",
+            content: [
+              {
+                id: "qty-header",
+                type: "text",
+                frame: { x: 4, y: 5, width: 44, height: 12 },
+                content: [{ kind: "text", text: "QTY" }],
+                style: { fontFamily: "Inter", fontSize: 10, lineHeight: 1.2 },
+              },
+            ],
+          },
+          {
+            columnId: "description",
+            content: [
+              {
+                id: "description-header",
+                type: "text",
+                frame: { x: 4, y: 5, width: 130, height: 12 },
+                content: [{ kind: "text", text: "Description" }],
+                style: { fontFamily: "Inter", fontSize: 10, lineHeight: 1.2 },
+              },
+            ],
+          },
+        ],
+      },
+      row: {
+        cells: [
+          {
+            columnId: "qty",
+            content: [
+              {
+                id: "grid-qty",
+                type: "text",
+                frame: { x: 4, y: 5, width: 44, height: 12 },
+                content: [
+                  { kind: "field", label: "Qty", binding: { path: "item.qty" } },
+                ],
+                style: { fontFamily: "Inter", fontSize: 10, lineHeight: 1.2 },
+              },
+            ],
+          },
+          {
+            columnId: "description",
+            content: [
+              {
+                id: "grid-description",
+                type: "text",
+                frame: { x: 4, y: 5, width: 130, height: 12 },
+                content: [
+                  {
+                    kind: "field",
+                    label: "Description",
+                    binding: { path: "item.description" },
+                  },
+                ],
+                style: { fontFamily: "Inter", fontSize: 10, lineHeight: 1.2 },
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    fixedLayer.nodes.push(table);
+
+    const page = buildEditorPageModel(gridTemplate, "page-1");
+    const tableNode = page.nodes.find(
+      (node) => node.sourceNodeId === "handling-table",
+    );
+    const header = page.nodes.find(
+      (node) => node.sourceNodeId === "description-header",
+    );
+    const bodyCell = page.nodes.find(
+      (node) => node.sourceNodeId === "grid-description",
+    );
+    const items = collectPageNodeItems(gridTemplate, "page-1");
+    const bodyCellItem = items.find((item) => item.id === "grid-description");
+
+    expect(tableNode?.visual).toMatchObject({
+      kind: "container",
+      label: "Grid: 2 columns",
+      tone: "grid",
+    });
+    expect(tableNode?.frame).toMatchObject({ x: 100, y: 120, height: 48 });
+    expect(header?.frame).toMatchObject({ x: 164, y: 125 });
+    expect(bodyCell?.frame).toMatchObject({ x: 164, y: 149 });
+    expect(bodyCell?.visual).toMatchObject({
+      kind: "text",
+      text: "{{item.description}}",
+    });
+    expect(bodyCellItem?.depth).toBe(1);
+    expect(bodyCellItem?.absoluteFrame).toMatchObject({ x: 164, y: 149 });
+    expect(bodyCellItem?.path).toContain(".handling-table.row.0.description.");
+  });
 });
 
 describe("updateNodeById isolation", () => {
@@ -620,6 +733,61 @@ function nodeOrder(template: DocumentTemplate): string[] {
   return template.pages[0].layers[0].nodes.map((node) => node.id);
 }
 
+function tableOperationsTemplate(): DocumentTemplate {
+  const style: TextStyle = { fontFamily: "Geist", fontSize: 12 };
+  const text = (id: string, x: number, y: number): TextNode => ({
+    id,
+    type: "text",
+    frame: { x, y, width: 36, height: 12 },
+    content: [{ kind: "text", text: id }],
+    style,
+  });
+
+  return {
+    id: "table-ops",
+    version: "0.0.1",
+    unit: "px",
+    pages: [
+      {
+        id: "page-1",
+        size: PAGE_PRESETS.letter,
+        layers: [
+          {
+            id: "fixed",
+            kind: "fixed",
+            nodes: [
+              text("outside", 0, 0),
+              {
+                id: "ops-table",
+                type: "grid",
+                frame: { x: 100, y: 100, width: 160, height: 48 },
+                columns: [{ id: "description", width: 160 }],
+                rowHeight: 24,
+                header: {
+                  cells: [
+                    {
+                      columnId: "description",
+                      content: [text("header-label", 4, 4)],
+                    },
+                  ],
+                },
+                row: {
+                  cells: [
+                    {
+                      columnId: "description",
+                      content: [text("cell-a", 4, 4), text("cell-b", 44, 4)],
+                    },
+                  ],
+                },
+              } satisfies GridNode,
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
 describe("z-order reordering", () => {
   it("brings a node to the front and to the back", () => {
     const front = zOrderTemplate();
@@ -673,6 +841,34 @@ describe("group and ungroup", () => {
   it("refuses to group a single node", () => {
     const template = zOrderTemplate();
     expect(groupNodesInTemplate(template, ["a"], "group-1")).toBeUndefined();
+  });
+
+  it("groups siblings inside a table cell and round-trips via ungroup", () => {
+    const template = tableOperationsTemplate();
+    const groupId = groupNodesInTemplate(
+      template,
+      ["cell-a", "cell-b"],
+      "cell-group",
+    );
+
+    expect(groupId).toBe("cell-group");
+
+    const group = findEditableNode(template, "cell-group");
+    expect(group?.type).toBe("group");
+    expect(group?.frame).toEqual({ x: 4, y: 4, width: 76, height: 12 });
+
+    const cellA =
+      group?.type === "group"
+        ? group.children.find((child) => child.id === "cell-a")
+        : undefined;
+    expect(cellA?.frame).toMatchObject({ x: 0, y: 0 });
+
+    const freed = ungroupNodeInTemplate(template, "cell-group");
+    expect(freed).toEqual(["cell-a", "cell-b"]);
+    expect(findEditableNode(template, "cell-a")?.frame).toMatchObject({
+      x: 4,
+      y: 4,
+    });
   });
 });
 
@@ -793,6 +989,26 @@ describe("moveNodeInTemplate", () => {
     // The shape sits at (100,100) with no padding, and the node was at (0,0),
     // so it rebases to (-100,-100) and renders in place inside the shape.
     expect(moved?.frame).toMatchObject({ x: -100, y: -100 });
+  });
+
+  it("reparents into a table body cell and rebases against the row origin", () => {
+    const template = tableOperationsTemplate();
+    expect(
+      moveNodeInTemplate(template, "outside", {
+        referenceId: "ops-table",
+        position: "inside",
+      }),
+    ).toBe(true);
+    expect(topLevelOrder(template)).toEqual(["ops-table"]);
+
+    const table = findEditableNode(template, "ops-table");
+    const firstCell =
+      table?.type === "grid" ? table.row.cells[0]?.content : undefined;
+    const moved = firstCell?.find((child) => child.id === "outside");
+
+    // Table body content starts after the 24px header row. The moved node was
+    // at absolute (0,0), so it rebases into the body cell at (-100,-124).
+    expect(moved?.frame).toMatchObject({ x: -100, y: -124 });
   });
 });
 
