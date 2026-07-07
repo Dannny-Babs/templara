@@ -4,3 +4,9 @@ packages:
   - "examples/*"
 allowBuilds:
   esbuild: true
+  sharp: true
+minimumReleaseAgeExclude:
+  - '@fumadocs/base-ui@16.11.1'
+  - '@fumadocs/tailwind@0.1.0'
+  - fumadocs-core@16.11.1
+  - fumadocs-mdx@15.1.0
