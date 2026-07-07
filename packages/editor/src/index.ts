@@ -181,6 +181,11 @@ export interface DocumentEditorProps {
    */
   brandLogoSrc?: string;
   /**
+   * Optional full brand node shown in the editor toolbar. When provided, it
+   * replaces the default mark + text lockup.
+   */
+  brandLogo?: ReactNode;
+  /**
    * Optional custom control rendered in the top toolbar next to the document
    * title (e.g. a template switcher supplied by the host app). Kept out of the
    * action cluster so it never overlaps Preview/Save.
@@ -331,6 +336,7 @@ export function DocumentEditor({
   initialPageId,
   onActivePageChange,
   brandLogoSrc,
+  brandLogo,
   toolbarAccessory,
 }: DocumentEditorProps): ReactElement {
   const [draftTemplate, setDraftTemplate] = useState<DocumentTemplate>(() =>
@@ -1671,6 +1677,7 @@ export function DocumentEditor({
       diagnosticsOpen,
       onToggleDiagnostics: () => setDiagnosticsOpen((open) => !open),
       brandLogoSrc,
+      brandLogo,
       accessory: toolbarAccessory,
     }),
     createElement(ToolRail, { activeTool, onSelectTool: setActiveTool }),
@@ -2090,6 +2097,7 @@ function TopToolbar({
   diagnosticsOpen,
   onToggleDiagnostics,
   brandLogoSrc,
+  brandLogo,
   accessory,
 }: {
   templateName: string;
@@ -2108,6 +2116,7 @@ function TopToolbar({
   diagnosticsOpen: boolean;
   onToggleDiagnostics: () => void;
   brandLogoSrc?: string;
+  brandLogo?: ReactNode;
   accessory?: ReactNode;
 }): ReactElement {
   return createElement(
@@ -2116,8 +2125,22 @@ function TopToolbar({
     createElement(
       "div",
       { style: toolbarBrandGroupStyle },
-      createElement(BrandMark, { brandLogoSrc }),
-      createElement("div", { style: brandNameStyle }, "Templara"),
+      ...(brandLogo
+        ? [
+            createElement(
+              "div",
+              { key: "brand-logo", style: brandLogoSlotStyle },
+              brandLogo,
+            ),
+          ]
+        : [
+            createElement(BrandMark, { key: "brand-mark", brandLogoSrc }),
+            createElement(
+              "div",
+              { key: "brand-name", style: brandNameStyle },
+              "Templara",
+            ),
+          ]),
       createElement("span", { style: toolbarDividerStyle }),
       accessory ?? createElement("div", { style: templateTitleStyle }, templateName),
       createElement("span", { style: statusPillStyle }, toolbarStatusLabel(status)),
@@ -6767,6 +6790,16 @@ const brandLogoImageStyle: CSSProperties = {
   height: 26,
   objectFit: "contain",
   flex: "0 0 auto",
+};
+
+const brandLogoSlotStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 121,
+  height: 39,
+  flex: "0 0 auto",
+  overflow: "hidden",
 };
 
 const brandNameStyle: CSSProperties = {
