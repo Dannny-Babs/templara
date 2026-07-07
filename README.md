@@ -100,7 +100,7 @@ The launch readiness checklist defines what is demo-ready now, what still carrie
 apps/
   studio/              main visual editor product
   playground/          renderer and template experiments
-  docs/                documentation site shell
+  docs/                Fumadocs documentation site (Vite + React Router + MDX)
 
 packages/
   core/                document schema, node types, bindings, page presets
@@ -124,11 +124,12 @@ Package API references:
 
 ## Development
 
-Install dependencies from the repo root, then run the Studio app.
+Install dependencies from the repo root, then run the Studio app or docs site.
 
 ```sh
 pnpm install
-pnpm --filter @templara/studio dev
+pnpm studio
+pnpm docs
 ```
 
 Useful checks:
