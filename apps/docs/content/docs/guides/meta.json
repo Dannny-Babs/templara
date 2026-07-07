@@ -1,0 +1,10 @@
+{
+  "title": "Guides",
+  "pages": [
+    "embed-editor",
+    "render-only",
+    "live-preview",
+    "template-json",
+    "validation-migration"
+  ]
+}

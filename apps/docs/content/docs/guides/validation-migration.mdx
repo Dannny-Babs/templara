@@ -1,0 +1,46 @@
+---
+title: Validation & Migration
+description: Validate templates and migrate older schema versions safely.
+---
+
+Validate a template before persisting or rendering, and migrate older templates up to the current schema version.
+
+```ts
+import {
+  CURRENT_TEMPLATE_VERSION,
+  migrateTemplate,
+  validateTemplate,
+} from '@templara/core';
+
+const migrated = migrateTemplate(loadedTemplate).template;
+const report = validateTemplate(migrated);
+
+if (!report.valid) {
+  console.warn('Template issues', report.issues);
+}
+```
+
+## Typical load path
+
+```ts
+import { migrateTemplate, validateTemplate } from '@templara/core';
+import type { DocumentTemplate } from '@templara/core';
+
+export function loadTemplate(input: DocumentTemplate): DocumentTemplate {
+  const migration = migrateTemplate(input);
+
+  if (migration.warnings.length > 0) {
+    console.warn(migration.warnings);
+  }
+
+  const validation = validateTemplate(migration.template);
+
+  if (!validation.ok) {
+    throw new Error(validation.issues.map((issue) => issue.message).join('\n'));
+  }
+
+  return migration.template;
+}
+```
+
+`CURRENT_TEMPLATE_VERSION` is exported from `@templara/core` when you need to stamp new templates.

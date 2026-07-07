@@ -1,0 +1,37 @@
+---
+title: Render-Only Service
+description: Produce documents without embedding the editor.
+---
+
+No editor is required to produce documents. Render a template with data anywhere React runs — including a server-rendered export service.
+
+```tsx
+import { renderDocument } from '@templara/renderer';
+import { DocumentPreview } from '@templara/react-renderer';
+import { invoiceSampleData, invoiceTemplate } from '@templara/templates';
+
+const result = renderDocument({
+  template: invoiceTemplate,
+  data: invoiceSampleData,
+});
+
+export function Preview() {
+  return <DocumentPreview document={result} />;
+}
+```
+
+## Render modes
+
+`renderDocument()` accepts an optional `mode`:
+
+| Mode | Purpose |
+| --- | --- |
+| `template` | Keeps authored structure visible for editor-style use |
+| `preview` | Resolves sample data and expands dynamic content |
+| `export` | Same deterministic output path intended for final export |
+
+## Determinism
+
+`renderDocument()` is deterministic: the same template and data always produce the same render tree. It never mutates its inputs and performs no I/O.
+
+For PDF export, render pages first and pass the resulting page elements to `@templara/pdf`.

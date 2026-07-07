@@ -1,0 +1,42 @@
+---
+title: Embed the Editor
+description: Mount DocumentEditor as a controlled React component in your app.
+---
+
+`DocumentEditor` is a controlled React component. Pass a template as `value` and sample `data`, then listen for changes.
+
+```tsx
+import { useState } from 'react';
+import { DocumentEditor } from '@templara/editor';
+import { invoiceSampleData, invoiceTemplate } from '@templara/templates';
+import type { DocumentTemplate } from '@templara/core';
+
+export function Studio() {
+  const [template, setTemplate] = useState<DocumentTemplate>(invoiceTemplate);
+  const [data, setData] = useState(invoiceSampleData);
+
+  return (
+    <DocumentEditor
+      value={template}
+      data={data}
+      onChange={setTemplate}
+      onDataChange={setData}
+    />
+  );
+}
+```
+
+## Editor vs renderer
+
+The editor renders authored structure — nodes, handlebars, and a single repeat row. It does **not** expand repeats or resolve final data. That is the renderer's job.
+
+## Host responsibilities
+
+Your app should own:
+
+- Project persistence outside the editor
+- Template validation and migration before loading saved JSON
+- Export through preview/render packages
+- Keeping the editor/renderer split intact
+
+See the [@templara/editor package reference](/docs/packages/editor) for the full prop surface.

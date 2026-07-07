@@ -1,0 +1,50 @@
+---
+title: Template JSON
+description: The document model that powers Templara templates.
+---
+
+A template is plain JSON and is the single source of truth. Pages hold layers; layers hold nodes; nodes carry a `frame` plus type-specific content.
+
+```json
+{
+  "id": "invoice",
+  "version": "0.0.1",
+  "unit": "px",
+  "pages": [
+    {
+      "id": "page-1",
+      "size": { "width": 816, "height": 1056 },
+      "layers": [
+        {
+          "id": "flow",
+          "kind": "flow",
+          "nodes": [
+            {
+              "id": "items",
+              "type": "repeat",
+              "binding": { "path": "invoice.items" },
+              "itemAlias": "item",
+              "frame": { "x": 0, "y": 0, "width": 688, "height": 30 },
+              "layout": {
+                "direction": "vertical",
+                "gap": 0,
+                "repeatHeaderOnPageBreak": true
+              },
+              "header": [],
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Safety model
+
+Runtime logic uses structured expressions and formulas only. Templates never contain executable JavaScript, and data is always treated as data — never HTML.
+
+## Before you persist
+
+Validate and migrate templates before saving or rendering. See [Validation & migration](/docs/guides/validation-migration).

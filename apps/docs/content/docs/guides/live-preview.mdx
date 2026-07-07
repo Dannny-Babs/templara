@@ -1,0 +1,24 @@
+---
+title: Live Preview Demo
+description: See a rendered invoice using the real Templara renderer stack.
+---
+
+This page embeds a live `DocumentPreview` powered by `@templara/renderer`, `@templara/react-renderer`, and the invoice starter from `@templara/templates`.
+
+<InvoicePreviewDemo />
+
+The preview above is rendered entirely in the browser from template JSON and sample data. No editor canvas is involved.
+
+## Under the hood
+
+```tsx
+const result = renderDocument({
+  template: invoiceTemplate,
+  data: invoiceSampleData,
+  mode: 'preview',
+});
+
+return <DocumentPreview document={result} scale={0.55} />;
+```
+
+To try other starters, swap in `shipmentBolTemplate`, `receiptTemplate`, or any template from `@templara/templates`.
