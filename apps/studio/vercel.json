@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "buildCommand": "cd ../.. && pnpm --filter @templara/studio^... build && pnpm --filter @templara/studio build",
+  "outputDirectory": "dist"
+}
