@@ -1,0 +1,48 @@
+---
+title: Introduction
+description: A browser-native document runtime and visual authoring platform for structured business documents.
+---
+
+Templara is a browser-native document runtime and visual authoring platform. Design once, bind to structured data, and render deterministic business documents.
+
+```txt
+Design once.
+Bind to data.
+Render many documents.
+```
+
+The editor and renderer are intentionally separate:
+
+- The **editor** shows authored template structure on one active page.
+- The **preview/export renderer** resolves data, expands repeats, paginates, and creates final output.
+
+That means repeat nodes show as one editable template row in the editor, but expand into real rows in preview and export.
+
+## Packages
+
+Templara is a small set of composable packages with strict boundaries.
+
+| Package | Role |
+| --- | --- |
+| `@templara/core` | Document language: schema, node types, bindings, variables, expressions, validation, and migrations. |
+| `@templara/renderer` | Deterministic planning: resolves data, evaluates logic, expands repeats, and paginates into a render tree. |
+| `@templara/react-renderer` | Renders the render tree in the browser (`DocumentPreview`). This is the export source. |
+| `@templara/editor` | Figma-like authoring surface (`DocumentEditor`). |
+| `@templara/pdf` | Browser-first PDF export and pre-flight diagnostics. |
+| `@templara/templates` | Ready-made invoice, BOL, receipt, pay stub, and shipping-label templates with sample data. |
+
+## Where to go next
+
+<Cards>
+  <Card title="Installation" href="/docs/getting-started/installation" />
+  <Card title="Embed the editor" href="/docs/guides/embed-editor" />
+  <Card title="Render-only service" href="/docs/guides/render-only" />
+  <Card title="Live preview demo" href="/docs/guides/live-preview" />
+</Cards>
+
+## Engineering rules
+
+- Template JSON is the source of truth.
+- The editor must not call the final renderer for its design canvas.
+- Preview and export resolve data, expand repeats, and paginate.
+- Packages should remain embeddable over time.

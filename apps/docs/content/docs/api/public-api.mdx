@@ -1,0 +1,36 @@
+---
+title: Public API
+description: Core functions and components exposed by the Templara packages.
+---
+
+## Renderer
+
+```ts
+renderDocument({ template, data, mode?, fontFamily? }): RenderDocumentResult
+```
+
+`renderDocument()` is deterministic: the same template and data always produce the same render tree. It never mutates its inputs and performs no I/O.
+
+## Core
+
+```ts
+validateTemplate(template): ValidationResult
+migrateTemplate(template): MigrationResult
+```
+
+## React components
+
+```tsx
+<DocumentEditor value data onChange onDataChange />
+<DocumentPreview document />
+```
+
+## Result shape
+
+`RenderDocumentResult` includes:
+
+- `pages` — paginated render tree for preview/export
+- `warnings` — layout and data diagnostics
+- `repeatAnalyses` — repeat pagination metrics
+
+For package-specific details, see the [Packages](/docs/packages/core) section.
