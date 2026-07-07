@@ -322,6 +322,7 @@ export function App() {
         data={activeProject.data}
         documentTitle={activeProject.name}
         documentStatus={dirty ? "dirty" : "saved"}
+        brandLogoSrc="/favicon.png"
         onSave={saveActiveProject}
         onChange={(template) =>
           setActiveProject((project) => ({

@@ -176,6 +176,11 @@ export interface DocumentEditorProps {
   initialPageId?: string;
   onActivePageChange?: (pageId: string) => void;
   /**
+   * Optional brand mark shown in the editor toolbar. Hosts can use this to keep
+   * the embeddable editor aligned with their own product shell.
+   */
+  brandLogoSrc?: string;
+  /**
    * Optional custom control rendered in the top toolbar next to the document
    * title (e.g. a template switcher supplied by the host app). Kept out of the
    * action cluster so it never overlaps Preview/Save.
@@ -325,6 +330,7 @@ export function DocumentEditor({
   onSave,
   initialPageId,
   onActivePageChange,
+  brandLogoSrc,
   toolbarAccessory,
 }: DocumentEditorProps): ReactElement {
   const [draftTemplate, setDraftTemplate] = useState<DocumentTemplate>(() =>
@@ -1664,6 +1670,7 @@ export function DocumentEditor({
       diagnostics,
       diagnosticsOpen,
       onToggleDiagnostics: () => setDiagnosticsOpen((open) => !open),
+      brandLogoSrc,
       accessory: toolbarAccessory,
     }),
     createElement(ToolRail, { activeTool, onSelectTool: setActiveTool }),
@@ -2082,6 +2089,7 @@ function TopToolbar({
   diagnostics,
   diagnosticsOpen,
   onToggleDiagnostics,
+  brandLogoSrc,
   accessory,
 }: {
   templateName: string;
@@ -2099,6 +2107,7 @@ function TopToolbar({
   diagnostics: EditorDiagnosticsSummary;
   diagnosticsOpen: boolean;
   onToggleDiagnostics: () => void;
+  brandLogoSrc?: string;
   accessory?: ReactNode;
 }): ReactElement {
   return createElement(
@@ -2107,15 +2116,7 @@ function TopToolbar({
     createElement(
       "div",
       { style: toolbarBrandGroupStyle },
-      createElement(
-        "div",
-        { style: brandMarkStyle },
-        createElement(ToolIcon, {
-          icon: CubeIcon,
-          style: brandMarkIconStyle,
-          size: 17,
-        }),
-      ),
+      createElement(BrandMark, { brandLogoSrc }),
       createElement("div", { style: brandNameStyle }, "Templara"),
       createElement("span", { style: toolbarDividerStyle }),
       accessory ?? createElement("div", { style: templateTitleStyle }, templateName),
@@ -2166,6 +2167,26 @@ function TopToolbar({
         variant: "primary",
       }),
     ),
+  );
+}
+
+function BrandMark({ brandLogoSrc }: { brandLogoSrc?: string }): ReactElement {
+  if (brandLogoSrc) {
+    return createElement("img", {
+      src: brandLogoSrc,
+      alt: "",
+      style: brandLogoImageStyle,
+    });
+  }
+
+  return createElement(
+    "div",
+    { style: brandMarkStyle },
+    createElement(ToolIcon, {
+      icon: CubeIcon,
+      style: brandMarkIconStyle,
+      size: 17,
+    }),
   );
 }
 
@@ -6738,6 +6759,13 @@ const brandMarkIconStyle: CSSProperties = {
   width: 17,
   height: 17,
   color: "#ffffff",
+  flex: "0 0 auto",
+};
+
+const brandLogoImageStyle: CSSProperties = {
+  width: 24,
+  height: 26,
+  objectFit: "contain",
   flex: "0 0 auto",
 };
 
