@@ -1,0 +1,26 @@
+---
+title: "@templara/templates"
+description: Starter templates and sample data for demos, tests, and local project creation.
+---
+
+## Use a starter
+
+```ts
+import { invoiceSampleData, invoiceTemplate } from '@templara/templates';
+
+const project = {
+  name: 'Invoice',
+  template: structuredClone(invoiceTemplate),
+  data: structuredClone(invoiceSampleData),
+};
+```
+
+## Included starters
+
+- Invoice
+- Shipment BOL
+- Receipt
+- Pay Stub
+- Shipping Label
+
+Host apps should clone starter templates before editing so the shared starter definitions stay immutable.

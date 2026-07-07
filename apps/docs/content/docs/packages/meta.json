@@ -1,0 +1,4 @@
+{
+  "title": "Packages",
+  "pages": ["core", "renderer", "react-renderer", "editor", "pdf", "templates"]
+}

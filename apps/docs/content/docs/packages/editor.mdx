@@ -1,0 +1,55 @@
+---
+title: "@templara/editor"
+description: Embeddable browser editor for authoring Templara document templates.
+---
+
+The editor is controlled by the host app. It shows authored template structure on one active page and leaves pagination, repeat expansion, and final data resolution to `@templara/renderer`.
+
+## Embed
+
+```tsx
+import { useState } from 'react';
+import { DocumentEditor } from '@templara/editor';
+import { invoiceSampleData, invoiceTemplate } from '@templara/templates';
+
+export function TemplateStudio() {
+  const [template, setTemplate] = useState(invoiceTemplate);
+  const [data, setData] = useState(invoiceSampleData);
+
+  return (
+    <DocumentEditor
+      value={template}
+      data={data}
+      documentTitle="Invoice Template"
+      documentStatus="draft"
+      onChange={setTemplate}
+      onDataChange={setData}
+      onSave={(nextTemplate, nextData) => {
+        setTemplate(nextTemplate);
+        setData(nextData ?? {});
+      }}
+    />
+  );
+}
+```
+
+## Public props
+
+| Prop | Description |
+| --- | --- |
+| `value` | Controlled `DocumentTemplate` |
+| `data` | Sample JSON used by preview and data binding tools |
+| `onChange` | Template update callback |
+| `onDataChange` | Sample data update callback |
+| `documentTitle` | Optional title for the top toolbar |
+| `documentStatus` | `"draft"`, `"dirty"`, or `"saved"` |
+| `onSave` | Host-owned save callback |
+| `initialPageId` | Initial active page |
+| `onActivePageChange` | Active page callback |
+
+## Host responsibilities
+
+- Persist projects outside the editor
+- Validate and migrate templates before loading saved JSON
+- Export through preview/render packages
+- Keep the renderer/editor split intact
