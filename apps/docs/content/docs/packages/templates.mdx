@@ -3,6 +3,18 @@ title: "@templara/templates"
 description: Starter templates and sample data for demos, tests, and local project creation.
 ---
 
+`@templara/templates` provides ready-made business document templates and matching sample data. It is useful for demos, tests, local projects, golden renders, and onboarding flows.
+
+## Main exports
+
+| Export | Purpose |
+| --- | --- |
+| `invoiceTemplate`, `invoiceSampleData` | Invoice starter |
+| `shipmentBolTemplate`, `shipmentBolSampleData` | Shipment bill of lading starter |
+| `receiptTemplate`, `receiptSampleData` | Receipt starter |
+| `payStubTemplate`, `payStubSampleData` | Pay stub starter |
+| `shippingLabelTemplate`, `shippingLabelSampleData` | Shipping label starter |
+
 ## Use a starter
 
 ```ts
@@ -15,6 +27,26 @@ const project = {
 };
 ```
 
+Clone before editing. Starter templates should be treated as immutable seeds.
+
+## Render a starter
+
+```tsx
+import { renderDocument } from '@templara/renderer';
+import { DocumentPreview } from '@templara/react-renderer';
+import { shipmentBolSampleData, shipmentBolTemplate } from '@templara/templates';
+
+const document = renderDocument({
+  template: shipmentBolTemplate,
+  data: shipmentBolSampleData,
+  mode: 'preview',
+});
+
+export function BolPreview() {
+  return <DocumentPreview document={document} scale={0.6} />;
+}
+```
+
 ## Included starters
 
 - Invoice
@@ -24,3 +56,5 @@ const project = {
 - Shipping Label
 
 Host apps should clone starter templates before editing so the shared starter definitions stay immutable.
+
+Related: [Quick Start](/docs/getting-started/quick-start).

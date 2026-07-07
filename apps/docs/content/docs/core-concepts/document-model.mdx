@@ -1,0 +1,138 @@
+---
+title: The Document Model
+description: Template JSON, pages, layers, nodes, and why JSON is the source of truth.
+---
+
+Templara templates are JSON documents. The JSON is not an export artifact or a cache. It is the source of truth for authoring, rendering, validation, migration, and persistence.
+
+That choice is deliberate. JSON can be parsed, validated, migrated, diffed, cloned, saved in a database, tested in fixtures, and rendered without a browser DOM. HTML may become an export target, but it is not the authoring language.
+
+## Template shape
+
+Every template has pages. Pages have layers. Layers have nodes. Nodes carry a `frame` and type-specific content.
+
+```json
+{
+  "id": "invoice",
+  "version": "0.0.1",
+  "unit": "px",
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Invoice",
+      "size": { "width": 816, "height": 1056 },
+      "margin": { "top": 48, "right": 48, "bottom": 48, "left": 48 },
+      "layers": [
+        {
+          "id": "fixed",
+          "kind": "fixed",
+          "nodes": []
+        },
+        {
+          "id": "flow",
+          "kind": "flow",
+          "nodes": []
+        }
+      ]
+    }
+  ]
+}
+```
+
+The current unit is document pixels:
+
+```txt
+1 document px = 1 CSS px = 1/96 inch
+1 PDF point = 1/72 inch
+1 document px = 0.75 PDF points
+```
+
+The built-in page presets include Letter (`816 x 1056`) and A4 (`794 x 1123`).
+
+## Layers
+
+Layers separate fixed authored content from dynamic flow content.
+
+| Layer kind | Purpose |
+| --- | --- |
+| `background` | Static page backgrounds and non-interactive decoration |
+| `fixed` | Absolutely positioned nodes that stay where the designer placed them |
+| `flow` | Dynamic regions that can grow, move, and paginate |
+
+Fixed nodes are rendered at their authored coordinates. Flow nodes are laid out inside explicit flow regions by the renderer.
+
+## Node families
+
+Templara has visual nodes and semantic document nodes.
+
+| Family | Examples | Why it exists |
+| --- | --- | --- |
+| Visual | `text`, `image`, `shape`, `barcode`, `qr` | Draw visible content |
+| Containers | `group`, `section`, `stack` | Organize and move related children |
+| Dynamic | `flowRegion`, `repeat`, `conditional`, `grid` | Represent data-driven document behavior |
+
+A text node can hold literal text and field runs:
+
+```json
+{
+  "id": "invoice-customer-name",
+  "type": "text",
+  "frame": { "x": 64, "y": 180, "width": 260, "height": 24 },
+  "content": [
+    {
+      "kind": "field",
+      "label": "Customer name",
+      "binding": { "path": "customer.name" }
+    }
+  ],
+  "style": {
+    "fontFamily": "Geist",
+    "fontSize": 14,
+    "fontWeight": 600
+  }
+}
+```
+
+In the editor, that field appears as `{{customer.name}}`. In preview/export, the renderer resolves it from the supplied data.
+
+## The document model is not the canvas
+
+The canvas is an editing projection of the template. It is not the final document output.
+
+```txt
+Template JSON
+  -> editor page model
+  -> one active authored page
+```
+
+Preview/export uses a different projection:
+
+```txt
+Template JSON + Data JSON
+  -> renderDocument()
+  -> paginated render tree
+```
+
+That separation is the foundation for repeats, pagination, logic, and deterministic export.
+
+## Before loading saved JSON
+
+Saved templates should always be migrated and validated before use.
+
+```ts
+import { migrateTemplate, validateTemplate } from '@templara/core';
+import type { DocumentTemplate } from '@templara/core';
+
+export function loadTemplate(input: DocumentTemplate): DocumentTemplate {
+  const migration = migrateTemplate(input);
+  const validation = validateTemplate(migration.template);
+
+  if (!validation.valid) {
+    throw new Error(validation.issues.map((issue) => issue.message).join('\n'));
+  }
+
+  return migration.template;
+}
+```
+
+See [Validation & diagnostics](/docs/core-concepts/validation-and-diagnostics) for the full load and preflight path.

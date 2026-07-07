@@ -3,6 +3,8 @@ title: Public API
 description: Core functions and components exposed by the Templara packages.
 ---
 
+Templara's public API is intentionally split by responsibility. The core package defines the document language, the renderer plans output, the React renderer paints that output, the editor edits template JSON, and the PDF package exports rendered preview pages.
+
 ## Renderer
 
 ```ts
@@ -11,11 +13,33 @@ renderDocument({ template, data, mode?, fontFamily? }): RenderDocumentResult
 
 `renderDocument()` is deterministic: the same template and data always produce the same render tree. It never mutates its inputs and performs no I/O.
 
+```ts
+import { renderDocument } from '@templara/renderer';
+import { invoiceSampleData, invoiceTemplate } from '@templara/templates';
+
+const result = renderDocument({
+  template: invoiceTemplate,
+  data: invoiceSampleData,
+  mode: 'preview',
+});
+```
+
 ## Core
 
 ```ts
 validateTemplate(template): ValidationResult
 migrateTemplate(template): MigrationResult
+```
+
+```ts
+import { migrateTemplate, validateTemplate } from '@templara/core';
+
+const migration = migrateTemplate(template);
+const validation = validateTemplate(migration.template);
+
+if (!validation.valid) {
+  throw new Error(validation.issues.map((issue) => issue.message).join('\n'));
+}
 ```
 
 ## React components
@@ -25,6 +49,25 @@ migrateTemplate(template): MigrationResult
 <DocumentPreview document />
 ```
 
+`DocumentEditor` is controlled and emits template/data changes. `DocumentPreview` is render-only and consumes `RenderDocumentResult`.
+
+```tsx
+import { DocumentEditor } from '@templara/editor';
+import { DocumentPreview } from '@templara/react-renderer';
+
+<DocumentEditor value={template} data={data} onChange={setTemplate} />
+<DocumentPreview document={rendered} scale={0.75} />
+```
+
+## PDF export
+
+```ts
+collectExportDiagnostics(document): ExportPreflight
+exportPreviewToPdf(pageElements, pageSizes, options?): Promise<BrowserPdfExportResult>
+```
+
+Export starts from rendered preview page elements. It does not accept raw template JSON.
+
 ## Result shape
 
 `RenderDocumentResult` includes:
@@ -33,4 +76,13 @@ migrateTemplate(template): MigrationResult
 - `warnings` — layout and data diagnostics
 - `repeatAnalyses` — repeat pagination metrics
 
-For package-specific details, see the [Packages](/docs/packages/core) section.
+## Package references
+
+<Cards>
+  <Card title="@templara/core" href="/docs/packages/core" />
+  <Card title="@templara/renderer" href="/docs/packages/renderer" />
+  <Card title="@templara/react-renderer" href="/docs/packages/react-renderer" />
+  <Card title="@templara/editor" href="/docs/packages/editor" />
+  <Card title="@templara/pdf" href="/docs/packages/pdf" />
+  <Card title="@templara/templates" href="/docs/packages/templates" />
+</Cards>

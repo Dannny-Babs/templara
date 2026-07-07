@@ -3,7 +3,7 @@ title: Validation & Migration
 description: Validate templates and migrate older schema versions safely.
 ---
 
-Validate a template before persisting or rendering, and migrate older templates up to the current schema version.
+Validate a template before persisting or rendering, and migrate older templates up to the current schema version. This is required for imported project bundles and saved local/cloud projects.
 
 ```ts
 import {
@@ -18,6 +18,8 @@ const report = validateTemplate(migrated);
 if (!report.valid) {
   console.warn('Template issues', report.issues);
 }
+
+console.log('Loaded schema version', CURRENT_TEMPLATE_VERSION);
 ```
 
 ## Typical load path
@@ -29,13 +31,13 @@ import type { DocumentTemplate } from '@templara/core';
 export function loadTemplate(input: DocumentTemplate): DocumentTemplate {
   const migration = migrateTemplate(input);
 
-  if (migration.warnings.length > 0) {
-    console.warn(migration.warnings);
+  if (migration.migrated) {
+    console.info('Applied template migrations', migration.applied);
   }
 
   const validation = validateTemplate(migration.template);
 
-  if (!validation.ok) {
+  if (!validation.valid) {
     throw new Error(validation.issues.map((issue) => issue.message).join('\n'));
   }
 
@@ -44,3 +46,29 @@ export function loadTemplate(input: DocumentTemplate): DocumentTemplate {
 ```
 
 `CURRENT_TEMPLATE_VERSION` is exported from `@templara/core` when you need to stamp new templates.
+
+## Combine with render/export diagnostics
+
+Validation checks template structure. Rendering checks data-dependent output. Export preflight checks whether the rendered preview is safe to export.
+
+```ts
+import { validateTemplate } from '@templara/core';
+import { renderDocument } from '@templara/renderer';
+import { collectExportDiagnostics } from '@templara/pdf';
+
+const validation = validateTemplate(template);
+
+if (!validation.valid) {
+  throw new Error(validation.issues.map((issue) => issue.message).join('\n'));
+}
+
+const rendered = renderDocument({ template, data, mode: 'preview' });
+const exportPreflight = collectExportDiagnostics(rendered);
+
+console.log({
+  renderWarnings: rendered.warnings,
+  exportDiagnostics: exportPreflight.diagnostics,
+});
+```
+
+See [Validation & diagnostics](/docs/core-concepts/validation-and-diagnostics) for the full model.

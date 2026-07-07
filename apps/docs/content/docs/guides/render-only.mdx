@@ -3,7 +3,16 @@ title: Render-Only Service
 description: Produce documents without embedding the editor.
 ---
 
-No editor is required to produce documents. Render a template with data anywhere React runs — including a server-rendered export service.
+No editor is required to produce documents. Render-only flows are best when templates are already authored and your app only needs deterministic preview/export from data.
+
+Use render-only when:
+
+- your SaaS product owns the data and document type
+- templates are bundled, versioned, or managed elsewhere
+- users should preview/download output but not edit template layout
+- you want a stable rendering boundary for tests and export preflight
+
+## Render a document
 
 ```tsx
 import { renderDocument } from '@templara/renderer';
@@ -20,6 +29,8 @@ export function Preview() {
 }
 ```
 
+`renderDocument()` does not render DOM and does not mutate inputs. `DocumentPreview` paints the render tree in React.
+
 ## Render modes
 
 `renderDocument()` accepts an optional `mode`:
@@ -34,4 +45,48 @@ export function Preview() {
 
 `renderDocument()` is deterministic: the same template and data always produce the same render tree. It never mutates its inputs and performs no I/O.
 
-For PDF export, render pages first and pass the resulting page elements to `@templara/pdf`.
+That makes it straightforward to test:
+
+```ts
+import { renderDocument } from '@templara/renderer';
+import { invoiceSampleData, invoiceTemplate } from '@templara/templates';
+
+it('renders the invoice without warnings', () => {
+  const result = renderDocument({
+    template: invoiceTemplate,
+    data: invoiceSampleData,
+    mode: 'preview',
+  });
+
+  expect(result.pages.length).toBeGreaterThan(0);
+  expect(result.warnings).toEqual([]);
+});
+```
+
+## Preflight before export
+
+For PDF export, render pages first, paint them with `DocumentPreview`, then pass the resulting page elements to `@templara/pdf`.
+
+```ts
+import { collectExportDiagnostics } from '@templara/pdf';
+
+const preflight = collectExportDiagnostics(result);
+
+if (!preflight.ok) {
+  return {
+    status: 'blocked',
+    diagnostics: preflight.diagnostics,
+  };
+}
+```
+
+## Data contract
+
+A render-only host should treat templates and data as contracts:
+
+1. Migrate and validate template JSON before use.
+2. Keep sample/production data shaped like `template.dataSchema`.
+3. Treat warnings as observable output, not console noise.
+4. Add golden render tests for important templates.
+
+See [Validation & diagnostics](/docs/core-concepts/validation-and-diagnostics) for the diagnostic pipeline.

@@ -9,9 +9,13 @@ This page embeds a live `DocumentPreview` powered by `@templara/renderer`, `@tem
 
 The preview above is rendered entirely in the browser from template JSON and sample data. No editor canvas is involved.
 
-## Under the hood
+## Minimal preview
 
 ```tsx
+import { renderDocument } from '@templara/renderer';
+import { DocumentPreview } from '@templara/react-renderer';
+import { invoiceSampleData, invoiceTemplate } from '@templara/templates';
+
 const result = renderDocument({
   template: invoiceTemplate,
   data: invoiceSampleData,
@@ -22,3 +26,55 @@ return <DocumentPreview document={result} scale={0.55} />;
 ```
 
 To try other starters, swap in `shipmentBolTemplate`, `receiptTemplate`, or any template from `@templara/templates`.
+
+## Preview beside an editor
+
+Live preview means the host app renders output from the same controlled template/data state that the editor updates.
+
+```tsx
+import { useMemo, useState } from 'react';
+import { DocumentEditor } from '@templara/editor';
+import { renderDocument } from '@templara/renderer';
+import { DocumentPreview } from '@templara/react-renderer';
+import { invoiceSampleData, invoiceTemplate } from '@templara/templates';
+
+export function EditorWithPreview() {
+  const [template, setTemplate] = useState(() => structuredClone(invoiceTemplate));
+  const [data, setData] = useState(() => structuredClone(invoiceSampleData));
+
+  const rendered = useMemo(
+    () => renderDocument({ template, data, mode: 'preview' }),
+    [template, data],
+  );
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 520px' }}>
+      <DocumentEditor
+        value={template}
+        data={data}
+        onChange={setTemplate}
+        onDataChange={setData}
+      />
+      <DocumentPreview document={rendered} scale={0.55} />
+    </div>
+  );
+}
+```
+
+Keep the distinction clear:
+
+- `DocumentEditor` edits authored template structure.
+- `renderDocument()` resolves the final result.
+- `DocumentPreview` paints the render tree.
+
+## Debugging preview differences
+
+If preview output differs from what the user expects, inspect:
+
+- `rendered.warnings`
+- `rendered.repeatAnalyses`
+- template bindings in the selected node
+- current repeat scope (`item.*` paths inside repeats)
+- whether the editor is showing a template row while preview is showing expanded data rows
+
+See [The editor is not the renderer](/docs/core-concepts/editor-is-not-renderer) for the architecture behind this behavior.

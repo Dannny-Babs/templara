@@ -1,0 +1,113 @@
+---
+title: The Editor Is Not The Renderer
+description: Why Templara separates authoring from final preview and export.
+---
+
+The most important architecture rule in Templara is simple:
+
+```txt
+The editor is not the renderer.
+```
+
+Both use the same template JSON, but they show different projections of it.
+
+## Authoring mode shows the template
+
+The editor is where a user designs the template. It should show:
+
+- one active page
+- authored nodes
+- field placeholders and handlebars
+- one repeat template row
+- flow region frames
+- layers, guides, rulers, snapping, and inspector controls
+
+It should not show:
+
+- expanded arrays
+- generated continuation pages
+- final paginated output
+- resolved sample data as the only editable state
+
+If a BOL has `shipment.handlingUnits` with 50 rows, the editor still shows one row template. That is the row the user edits.
+
+## Preview/export shows the result
+
+Preview/export has a different job. It should show:
+
+- resolved field values
+- evaluated variables and visibility logic
+- expanded repeats and grids
+- measured content
+- page breaks
+- continuation pages
+- render warnings and diagnostics
+
+That path starts with `renderDocument()`:
+
+```ts
+import { renderDocument } from '@templara/renderer';
+import { DocumentPreview } from '@templara/react-renderer';
+
+const document = renderDocument({
+  template,
+  data,
+  mode: 'preview',
+});
+
+export function Preview() {
+  return <DocumentPreview document={document} />;
+}
+```
+
+## Why one path breaks
+
+Imagine editing an invoice row with final rendered output on the canvas:
+
+```txt
+invoice.items -> 30 rendered rows
+```
+
+If the user drags row 12, did they move the row template or only one data instance? If row 29 moved to page 2, should the user edit the continuation page? If the sample data is missing a field, should the editable node disappear?
+
+Those are not edge cases. They are normal structured-document behavior.
+
+Templara avoids the ambiguity:
+
+```txt
+Editor:
+  template JSON -> authored page model -> design canvas
+
+Preview/export:
+  template JSON + data JSON -> render tree -> preview/PDF
+```
+
+## Responsibilities
+
+| System | Owns |
+| --- | --- |
+| `@templara/editor` | selection, tools, layers, inspector, bindings UI, sample data editing, history |
+| `@templara/renderer` | binding resolution, variables, logic, repeats, grids, measurement, pagination |
+| `@templara/react-renderer` | browser preview of the render tree |
+| `@templara/pdf` | export diagnostics and PDF export from rendered preview pages |
+
+The editor can use renderer diagnostics, but it must not call the final renderer to draw its design canvas.
+
+## Practical rule for hosts
+
+Use `DocumentEditor` for authoring:
+
+```tsx
+<DocumentEditor value={template} data={data} onChange={setTemplate} />
+```
+
+Use `renderDocument()` and `DocumentPreview` for output:
+
+```tsx
+const document = renderDocument({ template, data, mode: 'preview' });
+
+return <DocumentPreview document={document} />;
+```
+
+Do not merge these paths. Keeping them separate is what makes repeats, pagination, and missing-data states understandable.
+

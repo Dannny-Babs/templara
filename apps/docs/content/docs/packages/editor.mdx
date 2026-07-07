@@ -5,6 +5,12 @@ description: Embeddable browser editor for authoring Templara document templates
 
 The editor is controlled by the host app. It shows authored template structure on one active page and leaves pagination, repeat expansion, and final data resolution to `@templara/renderer`.
 
+## Main export
+
+| Export | Purpose |
+| --- | --- |
+| `DocumentEditor` | Controlled React authoring surface for template JSON |
+
 ## Embed
 
 ```tsx
@@ -46,6 +52,9 @@ export function TemplateStudio() {
 | `onSave` | Host-owned save callback |
 | `initialPageId` | Initial active page |
 | `onActivePageChange` | Active page callback |
+| `brandLogoSrc` | Optional toolbar logo image URL |
+| `brandLogo` | Optional full custom toolbar logo node |
+| `toolbarAccessory` | Optional custom title-area control |
 
 ## Host responsibilities
 
@@ -53,3 +62,20 @@ export function TemplateStudio() {
 - Validate and migrate templates before loading saved JSON
 - Export through preview/render packages
 - Keep the renderer/editor split intact
+
+## Editor output
+
+`DocumentEditor` emits updated template JSON. It does not emit rendered pages.
+
+Use this for output:
+
+```tsx
+import { renderDocument } from '@templara/renderer';
+import { DocumentPreview } from '@templara/react-renderer';
+
+const rendered = renderDocument({ template, data, mode: 'preview' });
+
+return <DocumentPreview document={rendered} />;
+```
+
+Related: [Embed the Editor](/docs/guides/embed-editor) and [The editor is not the renderer](/docs/core-concepts/editor-is-not-renderer).

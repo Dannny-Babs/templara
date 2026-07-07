@@ -1,0 +1,159 @@
+---
+title: Bindings & Data
+description: How template nodes bind to JSON data, repeat scope, variables, and safe expressions.
+---
+
+Bindings connect template nodes to structured JSON data. A binding is a path, not executable code.
+
+```ts
+type BindingRef = {
+  path: string;
+};
+```
+
+Given this data:
+
+```json
+{
+  "invoice": {
+    "number": "INV-1001",
+    "items": [
+      { "name": "Widget A", "quantity": 2, "price": 25, "total": 50 }
+    ]
+  },
+  "customer": {
+    "name": "John Doe"
+  }
+}
+```
+
+A text field can bind to `customer.name`:
+
+```json
+{
+  "kind": "field",
+  "label": "Customer name",
+  "binding": { "path": "customer.name" },
+  "fallback": "Unknown customer"
+}
+```
+
+## Handlebars in the editor
+
+The editor shows field bindings as handlebars:
+
+```txt
+{{customer.name}}
+```
+
+That keeps authoring honest. The user sees the template mapping, not only the current sample value. Preview/export resolves the binding into final text.
+
+## Field formatting
+
+Text fields can include renderer-backed formatting. These are structured options, not raw JavaScript.
+
+```json
+{
+  "kind": "field",
+  "label": "Invoice total",
+  "binding": { "path": "invoice.totals.total" },
+  "fallback": "0.00",
+  "format": {
+    "type": "currency",
+    "currency": "USD"
+  }
+}
+```
+
+Supported field format families include text transforms, currency, date style, and number precision.
+
+## Dynamic values
+
+Images, barcodes, QR codes, and variables use `DynamicValue`.
+
+```ts
+type DynamicValue =
+  | { kind: 'literal'; value: string }
+  | { kind: 'binding'; binding: { path: string } }
+  | { kind: 'template'; parts: InlineContent[] }
+  | { kind: 'formula'; formula: FormulaExpression };
+```
+
+Example barcode value:
+
+```json
+{
+  "id": "bol-barcode",
+  "type": "barcode",
+  "format": "code128",
+  "value": {
+    "kind": "binding",
+    "binding": { "path": "shipment.bolNumber" }
+  }
+}
+```
+
+## Repeat scope
+
+Repeat nodes create local scope. If a repeat is bound to `invoice.items` with alias `item`, children inside that row bind to `item.*`.
+
+```json
+{
+  "id": "invoice-items",
+  "type": "repeat",
+  "binding": { "path": "invoice.items" },
+  "itemAlias": "item",
+  "children": [
+    {
+      "id": "invoice-item-name",
+      "type": "text",
+      "content": [
+        {
+          "kind": "field",
+          "label": "Item",
+          "binding": { "path": "item.name" }
+        }
+      ]
+    }
+  ]
+}
+```
+
+In the editor, the data explorer can show **Current Scope** fields like `item.name`, `item.quantity`, and `item.total` when a repeat child is selected.
+
+## Variables
+
+Templates can define variables for reusable or computed values.
+
+```json
+{
+  "id": "invoiceItemCount",
+  "name": "Invoice item count",
+  "category": "computed",
+  "value": {
+    "kind": "formula",
+    "formula": { "op": "count", "path": "invoice.items" }
+  }
+}
+```
+
+Variables can be used like direct bindings in authoring flows. Formula variables are structured and safe: there is no arbitrary JavaScript evaluation.
+
+## Data schema
+
+`template.dataSchema.fields` declares the intended data contract:
+
+```json
+{
+  "fields": [
+    { "path": "invoice.number", "label": "Invoice Number", "kind": "string" },
+    { "path": "invoice.items", "label": "Items", "kind": "array" },
+    { "path": "invoice.totals.total", "label": "Total", "kind": "number" }
+  ]
+}
+```
+
+The editor can also infer fields from sample data when the schema is incomplete, but schema should remain the stable contract for production templates.
+
+See [Repeats & pagination](/docs/core-concepts/repeats-and-pagination) for how array bindings become rows.
+

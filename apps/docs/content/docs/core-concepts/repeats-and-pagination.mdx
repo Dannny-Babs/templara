@@ -1,0 +1,125 @@
+---
+title: Repeats & Pagination
+description: How one authored row becomes many rendered rows and flows across pages.
+---
+
+Repeats are the core abstraction for arrays. They let a user design one row, bind it to an array, and let the renderer produce as many rows as the data requires.
+
+```txt
+Editor:
+  one authored row template
+
+Preview/export:
+  resolved data rows
+  measured row heights
+  page breaks
+  continuation pages
+```
+
+## Repeat node shape
+
+A repeat stores the array path, the local item alias, layout rules, optional header, and row children.
+
+```json
+{
+  "id": "invoice-items",
+  "type": "repeat",
+  "binding": { "path": "invoice.items" },
+  "itemAlias": "item",
+  "frame": { "x": 64, "y": 360, "width": 688, "height": 40 },
+  "layout": {
+    "direction": "vertical",
+    "gap": 0,
+    "rowSizing": "compact",
+    "fillAvailableSpace": true,
+    "repeatHeaderOnPageBreak": true
+  },
+  "header": [],
+  "children": []
+}
+```
+
+## Editor behavior
+
+The editor does not expand the repeat. It shows:
+
+- a repeat frame
+- one row template
+- child bindings like `{{item.name}}`
+- configuration such as data source, alias, row height, gap, and pagination behavior
+
+That makes the row easy to design. If sample data has 100 items, the editor still shows the authored row once.
+
+## Renderer behavior
+
+The renderer resolves the array and creates row plans. Each row plan has a local scope:
+
+```txt
+invoice.items[0] -> item.name, item.quantity, item.total
+invoice.items[1] -> item.name, item.quantity, item.total
+invoice.items[2] -> item.name, item.quantity, item.total
+```
+
+Then it measures and places rows inside the available flow space.
+
+```txt
+available first-page space = page bottom - current cursor
+row height + gap = measured row cost
+rows that fit = floor(available space / row cost)
+overflow rows = total rows - rows that fit
+```
+
+The actual renderer tracks richer metrics, including first-page utilization, average row height, compaction, fill behavior, continuation capacity, and overflow count.
+
+## Page breaks
+
+Repeats paginate inside flow regions. When rows no longer fit, the renderer creates continuation pages and continues the remaining row plans.
+
+Headers are optional. If `repeatHeaderOnPageBreak` is enabled, the repeat header is redrawn on continuation pages. The main page header does not repeat by default unless modeled that way in the template.
+
+## Keep-together behavior
+
+`keepTogether` is useful for blocks that should move as one unit when they would fit on a fresh page. It should be used carefully: a large repeat cannot always stay together.
+
+```json
+{
+  "layout": {
+    "keepTogether": true
+  }
+}
+```
+
+If unbreakable content is taller than the available page space, the renderer should warn instead of silently losing content.
+
+## Diagnostics
+
+`renderDocument()` returns repeat analyses:
+
+```ts
+const result = renderDocument({
+  template: invoiceTemplate,
+  data: invoiceSampleData,
+  mode: 'preview',
+});
+
+console.log(result.repeatAnalyses);
+```
+
+A repeat analysis answers questions like:
+
+- how many items were rendered
+- how many rows fit on the first page
+- how much space remained
+- whether rows were compacted
+- how many overflow rows continued to later pages
+
+These metrics are what make the renderer debuggable. They also power editor diagnostics without duplicating layout logic.
+
+## Related pages
+
+<Cards>
+  <Card title="Bindings & data" href="/docs/core-concepts/bindings-and-data" />
+  <Card title="The editor is not the renderer" href="/docs/core-concepts/editor-is-not-renderer" />
+  <Card title="@templara/renderer" href="/docs/packages/renderer" />
+</Cards>
+

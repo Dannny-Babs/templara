@@ -5,6 +5,24 @@ description: React preview surface for rendered Templara documents.
 
 This package takes a `RenderDocumentResult` from `@templara/renderer` and paints it in the browser. It supports text, shapes, images, barcodes, QR codes, debug overlays, and source-node selection callbacks.
 
+## Main export
+
+| Export | Purpose |
+| --- | --- |
+| `DocumentPreview` | React component that renders a `RenderDocumentResult` |
+
+## Props
+
+| Prop | Description |
+| --- | --- |
+| `document` | Required `RenderDocumentResult` |
+| `scale` | Optional visual scale for preview display |
+| `className` | Optional wrapper class |
+| `showDebug` | Shows renderer debug boxes |
+| `selectedSourceNodeId` | Highlights preview nodes from a template source node |
+| `onNodePointerDown` | Callback for rendered node interactions |
+| `onPagePointerDown` | Callback for rendered page interactions |
+
 ## Preview
 
 ```tsx

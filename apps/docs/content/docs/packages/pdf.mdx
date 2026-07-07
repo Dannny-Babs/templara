@@ -5,6 +5,14 @@ description: Browser-first PDF export helpers for rendered Templara previews.
 
 The current export path clones already-rendered preview page elements into an isolated print surface, applies exact page sizing, waits for fonts/images, and invokes the browser print/save-to-PDF workflow.
 
+## Main exports
+
+| Export | Purpose |
+| --- | --- |
+| `collectExportDiagnostics()` | Pure export preflight from `RenderDocumentResult` |
+| `exportPreviewToPdf()` | Browser-first PDF export from rendered page elements |
+| `buildExportFontCss()` | Builds font CSS for the isolated export surface |
+
 ## Export
 
 ```ts
@@ -38,3 +46,17 @@ async function exportRenderedPreview(document: RenderDocumentResult) {
 ## Scope
 
 This package does not re-render documents. It validates and exports the preview surface produced by the renderer and React preview.
+
+## Required flow
+
+```txt
+renderDocument()
+  -> DocumentPreview
+  -> query [data-templara-page-id] elements
+  -> collectExportDiagnostics()
+  -> exportPreviewToPdf()
+```
+
+Do not pass raw template JSON directly to `@templara/pdf`; it expects rendered preview pages.
+
+Related: [Validation & diagnostics](/docs/core-concepts/validation-and-diagnostics).

@@ -5,6 +5,16 @@ description: Deterministic document renderer for Templara templates.
 
 `renderDocument()` converts a template and JSON data into a paginated render tree. It resolves bindings, variables, visibility logic, repeats, semantic grids, generated codes, and render warnings. It does not render DOM.
 
+## Main exports
+
+| Export | Purpose |
+| --- | --- |
+| `renderDocument()` | Convert template + data into a `RenderDocumentResult` |
+| `RenderDocumentResult` | Paginated pages, warnings, repeat analyses, fonts |
+| `RenderWarning` | Data/layout warning with optional `nodeId` and `pageId` |
+| `RepeatFitAnalysis` | Metrics for repeat fitting, compaction, and overflow |
+| `RenderPage`, `RenderNode` | Render tree consumed by preview/export surfaces |
+
 ## Render
 
 ```ts
@@ -21,6 +31,15 @@ console.log(result.pages.length);
 console.log(result.warnings);
 ```
 
+## Output flow
+
+```txt
+DocumentTemplate + data
+  -> renderDocument()
+  -> RenderDocumentResult
+  -> DocumentPreview / export preflight
+```
+
 ## Modes
 
 | Mode | Purpose |
@@ -32,3 +51,17 @@ console.log(result.warnings);
 ## Output
 
 The render tree is consumed by `@templara/react-renderer` for browser preview and by export helpers for preflight/PDF workflows.
+
+## What the renderer owns
+
+- binding resolution
+- variable and formula resolution
+- visibility logic
+- repeat and grid expansion
+- text measurement through a measurement provider
+- flow-region pagination
+- warnings and repeat analyses
+
+The renderer does not own editor interactions, persistence, or DOM painting.
+
+Related: [Repeats & pagination](/docs/core-concepts/repeats-and-pagination).

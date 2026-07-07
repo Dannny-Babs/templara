@@ -1,0 +1,131 @@
+---
+title: Validation & Diagnostics
+description: How Templara detects invalid templates, render warnings, and export readiness issues.
+---
+
+Templara has three diagnostic layers:
+
+1. template validation and migration in `@templara/core`
+2. render warnings and repeat analyses in `@templara/renderer`
+3. export preflight diagnostics in `@templara/pdf`
+
+Each layer has a different job. Do not duplicate renderer logic in the editor or host app. Aggregate diagnostics, then navigate the user to the source node when possible.
+
+## Validate and migrate before load
+
+Templates should be migrated before validation so older saved JSON can move to the current schema.
+
+```ts
+import { migrateTemplate, validateTemplate } from '@templara/core';
+import type { DocumentTemplate } from '@templara/core';
+
+export function prepareTemplate(input: DocumentTemplate): DocumentTemplate {
+  const migration = migrateTemplate(input);
+  const validation = validateTemplate(migration.template);
+
+  if (!validation.valid) {
+    throw new Error(validation.issues.map((issue) => issue.message).join('\n'));
+  }
+
+  return migration.template;
+}
+```
+
+Validation catches structural problems such as missing pages, unsupported units, invalid page sizes, invalid layers, and malformed nodes.
+
+## Render warnings
+
+`renderDocument()` returns warnings when the template can be interpreted but output may be wrong or incomplete.
+
+```ts
+import { renderDocument } from '@templara/renderer';
+
+const rendered = renderDocument({
+  template,
+  data,
+  mode: 'preview',
+});
+
+for (const warning of rendered.warnings) {
+  console.warn(warning.code, warning.message, warning.nodeId);
+}
+```
+
+Warnings include layout and data concerns such as repeat bindings that do not resolve to arrays, unbreakable overflow, unresolved generated values, or variable cycles.
+
+## Repeat analysis
+
+Repeat diagnostics are separate from warnings because they are useful even when the document is valid.
+
+```ts
+for (const analysis of rendered.repeatAnalyses) {
+  console.log({
+    repeat: analysis.sourceNodeId,
+    binding: analysis.bindingPath,
+    itemCount: analysis.itemCount,
+    rowsFitOnStartPage: analysis.rowsFitOnStartPage,
+    overflowItemCount: analysis.overflowItemCount,
+  });
+}
+```
+
+This is what helps answer: "Why did the line items break here?"
+
+## Export preflight
+
+PDF export checks the rendered document before opening the browser print/save flow.
+
+```ts
+import { collectExportDiagnostics } from '@templara/pdf';
+
+const preflight = collectExportDiagnostics(rendered);
+
+if (!preflight.ok) {
+  console.warn('Export is blocked', preflight.diagnostics);
+}
+```
+
+Export preflight maps some renderer warning codes to blocking errors. For example, an unbreakable overflow can make export unreliable, while an unresolved QR code may be a warning.
+
+## Editor diagnostics
+
+Studio combines these layers into one diagnostics surface:
+
+```txt
+validateTemplate(template)
+renderDocument({ template, data }).warnings
+collectExportDiagnostics(renderResult)
+```
+
+The diagnostics badge and dock should help the user fix the template, not hide the source. When a diagnostic has `nodeId`, clicking it should select that node in the editor.
+
+## Common load path
+
+```ts
+import { migrateTemplate, validateTemplate } from '@templara/core';
+import { renderDocument } from '@templara/renderer';
+import { collectExportDiagnostics } from '@templara/pdf';
+
+export function inspectDocument({ template: input, data }) {
+  const migration = migrateTemplate(input);
+  const validation = validateTemplate(migration.template);
+
+  if (!validation.valid) {
+    return { ok: false, issues: validation.issues };
+  }
+
+  const rendered = renderDocument({
+    template: migration.template,
+    data,
+    mode: 'preview',
+  });
+
+  return {
+    ok: true,
+    rendered,
+    exportPreflight: collectExportDiagnostics(rendered),
+  };
+}
+```
+
+Related: [Validation & migration guide](/docs/guides/validation-migration) and [@templara/pdf](/docs/packages/pdf).

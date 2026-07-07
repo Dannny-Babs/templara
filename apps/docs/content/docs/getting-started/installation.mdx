@@ -3,7 +3,7 @@ title: Installation
 description: Install Templara packages in your app.
 ---
 
-Install the core rendering stack first. Add the editor only if you need an embedded authoring surface.
+Install the rendering stack first. Add the editor only if your app needs an embedded authoring surface.
 
 ```bash
 pnpm add @templara/core @templara/renderer @templara/react-renderer
@@ -21,10 +21,21 @@ Optional helpers:
 pnpm add @templara/templates @templara/pdf
 ```
 
+## Which packages do you need?
+
+| Goal | Packages |
+| --- | --- |
+| Render an existing template | `@templara/core`, `@templara/renderer`, `@templara/react-renderer` |
+| Start from built-in templates | `@templara/templates` |
+| Let users edit templates | `@templara/editor` |
+| Export rendered previews to PDF | `@templara/pdf` |
+| Validate or migrate saved template JSON | `@templara/core` |
+
 ## Requirements
 
 - React 19+
 - A modern browser for preview and PDF export workflows
+- JSON data that matches the template's expected bindings
 
 ## Monorepo consumers
 
@@ -33,3 +44,31 @@ If you are working inside this repository, packages are already wired through th
 ```bash
 pnpm docs
 ```
+
+Run Studio, the local visual editor, with:
+
+```bash
+pnpm studio
+```
+
+## First render
+
+Once packages are installed, render a starter template with sample data:
+
+```tsx
+import { renderDocument } from '@templara/renderer';
+import { DocumentPreview } from '@templara/react-renderer';
+import { invoiceSampleData, invoiceTemplate } from '@templara/templates';
+
+const document = renderDocument({
+  template: invoiceTemplate,
+  data: invoiceSampleData,
+  mode: 'preview',
+});
+
+export function App() {
+  return <DocumentPreview document={document} scale={0.75} />;
+}
+```
+
+Continue to the [Quick Start](/docs/getting-started/quick-start) for the full render, edit, and export path.

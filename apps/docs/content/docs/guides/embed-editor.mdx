@@ -3,7 +3,11 @@ title: Embed the Editor
 description: Mount DocumentEditor as a controlled React component in your app.
 ---
 
-`DocumentEditor` is a controlled React component. Pass a template as `value` and sample `data`, then listen for changes.
+`DocumentEditor` is the embeddable authoring surface. It is controlled by your app: pass a template as `value`, pass sample `data`, and persist changes from callbacks.
+
+The editor edits template JSON. It does not own project storage, cloud sync, authentication, final rendering, or PDF export.
+
+## Basic embed
 
 ```tsx
 import { useState } from 'react';
@@ -28,7 +32,24 @@ export function Studio() {
 
 ## Editor vs renderer
 
-The editor renders authored structure — nodes, handlebars, and a single repeat row. It does **not** expand repeats or resolve final data. That is the renderer's job.
+The editor renders authored structure: nodes, handlebars, guides, layers, and a single repeat row. It does **not** expand repeats or resolve final data.
+
+Use the renderer for preview/export:
+
+```tsx
+import { renderDocument } from '@templara/renderer';
+import { DocumentPreview } from '@templara/react-renderer';
+
+const rendered = renderDocument({
+  template,
+  data,
+  mode: 'preview',
+});
+
+return <DocumentPreview document={rendered} />;
+```
+
+This separation matters. If the editor used final rendered output, a repeat with 50 rows would flood the canvas and make it unclear whether the user is editing the row template or a generated row instance.
 
 ## Host responsibilities
 
@@ -36,7 +57,71 @@ Your app should own:
 
 - Project persistence outside the editor
 - Template validation and migration before loading saved JSON
-- Export through preview/render packages
+- Save/dirty state and project naming
+- Preview and export through renderer packages
 - Keeping the editor/renderer split intact
+
+## Persisting a project
+
+Templara Studio uses local projects, but the embeddable editor does not prescribe storage. A host app can save to local storage, IndexedDB, a database, or an API.
+
+```tsx
+import { migrateTemplate, validateTemplate } from '@templara/core';
+import type { DocumentTemplate } from '@templara/core';
+
+type SavedProject = {
+  id: string;
+  name: string;
+  template: DocumentTemplate;
+  data: Record<string, unknown>;
+  updatedAt: string;
+};
+
+function prepareProject(project: SavedProject): SavedProject {
+  const migration = migrateTemplate(project.template);
+  const validation = validateTemplate(migration.template);
+
+  if (!validation.valid) {
+    throw new Error(validation.issues.map((issue) => issue.message).join('\n'));
+  }
+
+  return {
+    ...project,
+    template: migration.template,
+  };
+}
+```
+
+## Save button integration
+
+`DocumentEditor` can show document title/status and call a host-owned save function.
+
+```tsx
+<DocumentEditor
+  value={template}
+  data={data}
+  documentTitle="Shipment BOL Template"
+  documentStatus={dirty ? 'dirty' : 'saved'}
+  onChange={(nextTemplate) => {
+    setTemplate(nextTemplate);
+    setDirty(true);
+  }}
+  onDataChange={(nextData) => {
+    setData(nextData);
+    setDirty(true);
+  }}
+  onSave={(nextTemplate, nextData) => {
+    saveProject({ template: nextTemplate, data: nextData ?? {} });
+    setDirty(false);
+  }}
+/>
+```
+
+## What not to do
+
+- Do not persist rendered output as the template.
+- Do not call `renderDocument()` to draw the editor canvas.
+- Do not mutate starter templates directly; clone them before editing.
+- Do not skip validation when loading imported or saved project JSON.
 
 See the [@templara/editor package reference](/docs/packages/editor) for the full prop surface.

@@ -3,7 +3,22 @@ title: "@templara/core"
 description: Core schema, validation, migration, logic, and shared document types.
 ---
 
-Use this package anywhere templates are stored, loaded, imported, or sent across package boundaries.
+`@templara/core` owns the document language. Use it anywhere templates are stored, loaded, imported, validated, migrated, or sent across package boundaries.
+
+It does not render DOM, export PDFs, or manage editor state.
+
+## Main exports
+
+| Export | Purpose |
+| --- | --- |
+| `DocumentTemplate` | Root template shape |
+| `PageTemplate`, `PageLayer`, node types | Page, layer, and node schema |
+| `BindingRef`, `DynamicValue`, `ExpressionRef` | Data binding, generated values, and logic references |
+| `VariableDefinition`, `FormulaExpression` | Template variables and safe formulas |
+| `PAGE_PRESETS` | Built-in page sizes |
+| `validateTemplate()` | Structural validation before render/persist |
+| `migrateTemplate()` | Version migration for saved templates |
+| `CURRENT_TEMPLATE_VERSION` | Current schema version stamp |
 
 ## Validate and migrate
 
@@ -14,18 +29,43 @@ import type { DocumentTemplate } from '@templara/core';
 export function loadTemplate(input: DocumentTemplate): DocumentTemplate {
   const migration = migrateTemplate(input);
 
-  if (migration.warnings.length > 0) {
-    console.warn(migration.warnings);
+  if (migration.migrated) {
+    console.info('Applied template migrations', migration.applied);
   }
 
   const validation = validateTemplate(migration.template);
 
-  if (!validation.ok) {
+  if (!validation.valid) {
     throw new Error(validation.issues.map((issue) => issue.message).join('\n'));
   }
 
   return migration.template;
 }
+```
+
+## Create a minimal template
+
+```ts
+import { PAGE_PRESETS } from '@templara/core';
+import type { DocumentTemplate } from '@templara/core';
+
+export const blankTemplate: DocumentTemplate = {
+  id: 'blank',
+  version: '0.0.1',
+  unit: 'px',
+  pages: [
+    {
+      id: 'page-1',
+      name: 'Page 1',
+      size: PAGE_PRESETS.letter,
+      layers: [
+        { id: 'background', kind: 'background', nodes: [] },
+        { id: 'fixed', kind: 'fixed', nodes: [] },
+        { id: 'flow', kind: 'flow', nodes: [] },
+      ],
+    },
+  ],
+};
 ```
 
 ## Includes
@@ -36,3 +76,5 @@ export function loadTemplate(input: DocumentTemplate): DocumentTemplate {
 - Template validation
 - Template migration scaffolding
 - Logic description/evaluation helpers
+
+Related: [The document model](/docs/core-concepts/document-model).
