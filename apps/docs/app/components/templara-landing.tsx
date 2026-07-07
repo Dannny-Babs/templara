@@ -25,6 +25,62 @@ const MONO = "'Geist Mono', ui-monospace, SFMono-Regular, monospace";
 const MAXW = 1080;
 const GITHUB = "https://github.com/Dannny-Babs/templara";
 const INSTALL = "npm install @templara/core";
+const FAVICON = "/favicon.png";
+const WORDMARK = "/templara-wordmark.png";
+
+const LogoWordmark = ({ height = 28 }: { height?: number }) => {
+  const width = Math.round((121 / 39) * height);
+  return (
+    <div
+      style={{
+        width,
+        height,
+        position: "relative",
+        overflow: "hidden",
+        flexShrink: 0,
+      }}
+    >
+      <img
+        src={WORDMARK}
+        alt="Templara"
+        style={{
+          position: "absolute",
+          width: "169.73%",
+          height: "400.6%",
+          left: "-11.58%",
+          top: "-67.48%",
+          maxWidth: "none",
+        }}
+      />
+    </div>
+  );
+};
+
+const LogoMark = ({ size = 28 }: { size?: number }) => (
+  <img
+    src={FAVICON}
+    alt="Templara"
+    width={size}
+    height={size}
+    style={{ display: "block", borderRadius: 6, flexShrink: 0 }}
+  />
+);
+
+const BrandLogo = ({ compact = false }: { compact?: boolean }) => (
+  <a
+    href="/"
+    aria-label="Templara home"
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      textDecoration: "none",
+      color: "inherit",
+    }}
+  >
+    {compact ? <LogoMark size={26} /> : <LogoWordmark height={28} />}
+  </a>
+);
 
 type Breakpoint = "sm" | "md" | "lg";
 
@@ -1030,9 +1086,7 @@ export default function TemplaraLanding() {
             gap: isSm ? 14 : 28,
           }}
         >
-          <span style={{ fontSize: isSm ? 16 : 17, fontWeight: 700, letterSpacing: "-0.01em" }}>
-            Templara
-          </span>
+          <BrandLogo compact={isSm} />
           <span style={{ flex: 1 }} />
           <NavLink href="/docs">Docs</NavLink>
           {!isSm && <NavLink href="#architecture">Architecture</NavLink>}
@@ -1326,6 +1380,7 @@ export default function TemplaraLanding() {
             padding: isSm ? "20px 16px" : "26px 24px",
           }}
         >
+          <LogoMark size={20} />
           <span style={{ fontSize: 13, color: C.muted }}>© Templara</span>
           <span style={{ flex: 1 }} />
           <a

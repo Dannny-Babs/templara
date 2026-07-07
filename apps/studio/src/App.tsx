@@ -104,7 +104,7 @@ const TEMPLATE_SEEDS: TemplateSeed[] = [
 type StudioMessage = { tone: "info" | "error"; text: string } | null;
 type StudioScreen = "dashboard" | "editor";
 
-const DOCS_APP_URL = "http://localhost:5174/";
+const DOCS_URL = import.meta.env.VITE_DOCS_URL ?? "http://localhost:3001/docs";
 const SEED_DESCRIPTIONS: Record<string, string> = {
   blank: "Start with an empty Letter-size page and build from scratch.",
   invoice: "Line items, totals, computed variables, and invoice sample data.",
@@ -381,7 +381,7 @@ function StudioDashboard({
     <main style={dashboardShellStyle}>
       <header style={dashboardTopbarStyle}>
         <LogoWordmark />
-        <a href={DOCS_APP_URL} target="_blank" rel="noreferrer" style={dashboardDocsButtonStyle}>
+        <a href={DOCS_URL} target="_blank" rel="noreferrer" style={dashboardDocsButtonStyle}>
           View Docs
         </a>
       </header>
