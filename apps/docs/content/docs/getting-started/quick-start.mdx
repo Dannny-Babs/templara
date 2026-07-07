@@ -1,0 +1,38 @@
+---
+title: Quick Start
+description: Render your first Templara document in a few lines of code.
+---
+
+The fastest path is render-only: take a starter template, pass sample data, and paint the result with `DocumentPreview`.
+
+```tsx
+import { renderDocument } from '@templara/renderer';
+import { DocumentPreview } from '@templara/react-renderer';
+import { invoiceSampleData, invoiceTemplate } from '@templara/templates';
+
+const result = renderDocument({
+  template: invoiceTemplate,
+  data: invoiceSampleData,
+  mode: 'preview',
+});
+
+export function InvoicePreview() {
+  return <DocumentPreview document={result} />;
+}
+```
+
+## What you get back
+
+`renderDocument()` returns:
+
+- `pages` — paginated render tree
+- `warnings` — actionable layout and data diagnostics
+- `repeatAnalyses` — per-repeat pagination metrics
+
+## Next steps
+
+<Cards>
+  <Card title="Embed the editor" href="/docs/guides/embed-editor" />
+  <Card title="Template JSON" href="/docs/guides/template-json" />
+  <Card title="@templara/renderer" href="/docs/packages/renderer" />
+</Cards>

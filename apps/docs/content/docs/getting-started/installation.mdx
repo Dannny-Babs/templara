@@ -1,0 +1,35 @@
+---
+title: Installation
+description: Install Templara packages in your app.
+---
+
+Install the core rendering stack first. Add the editor only if you need an embedded authoring surface.
+
+```bash
+pnpm add @templara/core @templara/renderer @templara/react-renderer
+```
+
+For embedded authoring:
+
+```bash
+pnpm add @templara/editor
+```
+
+Optional helpers:
+
+```bash
+pnpm add @templara/templates @templara/pdf
+```
+
+## Requirements
+
+- React 19+
+- A modern browser for preview and PDF export workflows
+
+## Monorepo consumers
+
+If you are working inside this repository, packages are already wired through the workspace. Run the docs site with:
+
+```bash
+pnpm docs
+```
