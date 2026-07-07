@@ -41,12 +41,6 @@ importers:
 
   apps/playground:
     dependencies:
-      '@hugeicons-pro/core-stroke-rounded':
-        specifier: ^4.2.2
-        version: 4.2.2
-      '@hugeicons-pro/core-stroke-sharp':
-        specifier: ^4.2.2
-        version: 4.2.2
       '@hugeicons/mcp-server':
         specifier: ^0.2.2
         version: 0.2.2(zod@3.25.76)
@@ -103,10 +97,7 @@ importers:
 
   packages/editor:
     dependencies:
-      '@hugeicons-pro/core-stroke-rounded':
-        specifier: ^4.2.2
-        version: 4.2.2
-      '@hugeicons-pro/core-stroke-sharp':
+      '@hugeicons/core-free-icons':
         specifier: ^4.2.2
         version: 4.2.2
       '@hugeicons/react':
@@ -412,11 +403,8 @@ packages:
     peerDependencies:
       hono: ^4
 
-  '@hugeicons-pro/core-stroke-rounded@4.2.2':
-    resolution: {integrity: sha512-+TruczzkMDuo1PVTAQWNOkjzPhOkTE/mGsk3OU1kwGnm66c+pgSrLpSRpp0OWmKaHCDCnKfdufFroK7+gs8oWQ==}
-
-  '@hugeicons-pro/core-stroke-sharp@4.2.2':
-    resolution: {integrity: sha512-+jnnDYkEkEUnsEBYF0EApMU2Kro/6bXf0fZ1fdjlZrAOAuAbrgLuf0Zi4Q/YTmZreT0zXKXEJQjSLl3TCbA8zg==}
+  '@hugeicons/core-free-icons@4.2.2':
+    resolution: {integrity: sha512-fjQW3p6cwoJmwK3oCnV8Z3PC5sHihDvr2jkAHax8cxqp62GaV/D7B/Rnao+JwicW8fmLZUQ6QrzWfoyMFOEQlQ==}
 
   '@hugeicons/mcp-server@0.2.2':
     resolution: {integrity: sha512-mmJQ2+hZ7S2CKPMjp3rxxD36jlUrVEHwsxcBlue5zg+vRlwL0eZt1KJIIOMvMhNE3Pt7bkcvx2CeEx2dDwFM3w==}
@@ -1571,9 +1559,7 @@ snapshots:
     dependencies:
       hono: 4.12.27
 
-  '@hugeicons-pro/core-stroke-rounded@4.2.2': {}
-
-  '@hugeicons-pro/core-stroke-sharp@4.2.2': {}
+  '@hugeicons/core-free-icons@4.2.2': {}
 
   '@hugeicons/mcp-server@0.2.2(zod@3.25.76)':
     dependencies:

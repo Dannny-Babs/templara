@@ -4,7 +4,7 @@ import type {
   FieldFormat,
   FormulaExpression,
   FormulaOperand,
-} from "./index";
+} from "./index.js";
 
 /**
  * Human-readable descriptions and a lightweight preview evaluator for the

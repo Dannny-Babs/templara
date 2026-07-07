@@ -1,4 +1,4 @@
-import type { DocumentTemplate } from "./index";
+import type { DocumentTemplate } from "./index.js";
 
 /**
  * The template schema version this build of `@templara/core` authors and

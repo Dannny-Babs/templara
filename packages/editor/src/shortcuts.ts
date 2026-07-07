@@ -1,4 +1,4 @@
-import type { ReorderCommand } from "./editorModel";
+import type { ReorderCommand } from "./editorModel.js";
 
 export const DEFAULT_NUDGE_STEP = 1;
 export const DEFAULT_NUDGE_LARGE_STEP = 10;

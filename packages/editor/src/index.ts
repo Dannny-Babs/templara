@@ -42,11 +42,11 @@ import {
   TypeCursorIcon,
   Undo03Icon,
   ViewIcon,
-} from "@hugeicons-pro/core-stroke-rounded";
+} from "@hugeicons/core-free-icons";
 import {
   ChevronDownIcon as ChevronDownSharpIcon,
   ChevronRightIcon as ChevronRightSharpIcon,
-} from "@hugeicons-pro/core-stroke-sharp";
+} from "@hugeicons/core-free-icons";
 import type {
   BarcodeNode,
   ConditionalNode,
@@ -79,8 +79,8 @@ import type {
   EditorRenderNode,
   EditorVisual,
   ResizeHandle,
-} from "./editorModel";
-import type { ReorderCommand } from "./editorModel";
+} from "./editorModel.js";
+import type { ReorderCommand } from "./editorModel.js";
 import {
   buildEditorPageModel,
   collectPageNodeItems,
@@ -92,50 +92,50 @@ import {
   ungroupNodeInTemplate,
   updateNodeById,
   updateNodesById,
-} from "./editorModel";
-import type { HistoryTransaction } from "./history";
+} from "./editorModel.js";
+import type { HistoryTransaction } from "./history.js";
 import {
   DEFAULT_HISTORY_COALESCE_MS,
   advanceHistoryTransaction,
   shouldStartNewHistoryEntry,
-} from "./history";
-import type { DataExplorerField, DataExplorerGroup } from "./dataExplorer";
+} from "./history.js";
+import type { DataExplorerField, DataExplorerGroup } from "./dataExplorer.js";
 import {
   applyDataBindingToNode,
   buildDataExplorerModel,
   createBoundTextNode,
   isFieldBindableForNode,
-} from "./dataExplorer";
+} from "./dataExplorer.js";
 import {
   NodeInspectorPanel,
   PageInspectorPanel,
   initialInspectorUiState,
   inspectorUiReducer,
   resolvePageInspectorDraft,
-} from "./inspector";
-import type { EditorDiagnostic, EditorDiagnosticsSummary } from "./diagnostics";
-import { buildEditorDiagnostics } from "./diagnostics";
-import type { EditorClipboard } from "./editorClipboard";
+} from "./inspector/index.js";
+import type { EditorDiagnostic, EditorDiagnosticsSummary } from "./diagnostics.js";
+import { buildEditorDiagnostics } from "./diagnostics.js";
+import type { EditorClipboard } from "./editorClipboard.js";
 import {
   createEditorClipboard,
   pasteEditorClipboardNodes,
-} from "./editorClipboard";
-import { addGridColumn, bindGridColumn, setGridColumnWidth } from "./gridModel";
-import { inferDataSchemaFromSample } from "./schemaAuthoring";
-import type { InsertTool } from "./shortcuts";
-import { resolveEditorShortcut } from "./shortcuts";
-import { parseInlineContent } from "./textContent";
+} from "./editorClipboard.js";
+import { addGridColumn, bindGridColumn, setGridColumnWidth } from "./gridModel.js";
+import { inferDataSchemaFromSample } from "./schemaAuthoring.js";
+import type { InsertTool } from "./shortcuts.js";
+import { resolveEditorShortcut } from "./shortcuts.js";
+import { parseInlineContent } from "./textContent.js";
 
 export type {
   AlignmentCommand,
   EditorPageModel,
   EditorRenderNode,
-} from "./editorModel";
+} from "./editorModel.js";
 export {
   buildEditorPageModel,
   collectPageNodeItems,
   getAlignmentFramePatches,
-} from "./editorModel";
+} from "./editorModel.js";
 
 const DEFAULT_ZOOM = 0.76;
 const GRID_SIZE = 8;

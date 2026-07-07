@@ -5,7 +5,7 @@ import type {
   FormulaExpression,
   FormulaOperand,
   VariableDefinition,
-} from "./index";
+} from "./index.js";
 
 export type ValidationSeverity = "error" | "warning";
 

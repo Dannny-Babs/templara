@@ -8,6 +8,7 @@ import {
   BarcodeIcon,
   Cancel01Icon,
   CheckmarkCircle02Icon,
+  ChevronDownIcon,
   Copy01Icon,
   CopyPlusIcon,
   Delete02Icon,
@@ -29,8 +30,7 @@ import {
   Target02Icon,
   ThirdBracketIcon,
   TypeCursorIcon
-} from "@hugeicons-pro/core-stroke-rounded";
-import { ChevronDownIcon } from "@hugeicons-pro/core-stroke-sharp";
+} from "@hugeicons/core-free-icons";
 import { PAGE_PRESETS, describeExpression, evaluateExpressionPreview } from "@templara/core";
 import type {
   BarcodeNode,
@@ -54,15 +54,15 @@ import type {
   TextNode,
   VariableDefinition
 } from "@templara/core";
-import type { EditorNodeItem, EditorPageModel } from "../editorModel";
-import type { DataExplorerField, DataExplorerModel } from "../dataExplorer";
+import type { EditorNodeItem, EditorPageModel } from "../editorModel.js";
+import type { DataExplorerField, DataExplorerModel } from "../dataExplorer.js";
 import {
   applyDataBindingToNode,
   buildDataExplorerModel,
   formatDataSampleValue,
   isFieldBindableForNode,
   sampleValueForBindingPath
-} from "../dataExplorer";
+} from "../dataExplorer.js";
 import {
   addGridStaticRow,
   addGridColumn,
@@ -77,8 +77,8 @@ import {
   setGridFooterEnabled,
   setGridHeaderEnabled,
   setGridRepeatHeaderOnBreak
-} from "../gridModel";
-import { insertBindingToken, parseInlineContent, serializeInlineContent } from "../textContent";
+} from "../gridModel.js";
+import { insertBindingToken, parseInlineContent, serializeInlineContent } from "../textContent.js";
 
 export type EditableNode = DocNode | FlowNode;
 export type InspectorTab = "layout" | "data" | "logic" | "advanced";

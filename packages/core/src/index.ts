@@ -389,6 +389,6 @@ export interface DataField {
   children?: DataField[];
 }
 
-export * from "./validation";
-export * from "./migration";
-export * from "./logic";
+export * from "./validation.js";
+export * from "./migration.js";
+export * from "./logic.js";

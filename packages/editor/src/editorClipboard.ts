@@ -1,5 +1,5 @@
 import type { DocNode, DocumentTemplate, FlowNode, Frame, GridNode } from "@templara/core";
-import type { EditableNode, EditorNodeItem } from "./editorModel";
+import type { EditableNode, EditorNodeItem } from "./editorModel.js";
 
 export interface EditorClipboardNode {
   node: EditableNode;

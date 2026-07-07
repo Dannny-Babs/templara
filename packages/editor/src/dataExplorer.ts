@@ -12,7 +12,7 @@ import type {
   RepeatNode,
   TextNode
 } from "@templara/core";
-import type { EditorNodeItem } from "./editorModel";
+import type { EditorNodeItem } from "./editorModel.js";
 
 export type EditableNode = DocNode | FlowNode;
 export type DataExplorerKind = "text" | "number" | "date" | "boolean" | "image" | "array" | "object" | "unknown";
