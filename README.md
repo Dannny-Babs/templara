@@ -197,19 +197,25 @@ All eight packages share one version number per release (configured as a fixed g
 **1. npm account**
 
 - Sign up at [npmjs.com/signup](https://www.npmjs.com/signup)
-- Enable 2FA (recommended for publishing)
 
-**2. Create the `@templara` org**
+**2. Enable 2FA (required to publish)**
 
-- Go to [npmjs.com/org/create](https://www.npmjs.com/org/create)
-- Name it `templara` — this unlocks scoped packages like `@templara/core`
+npm requires two-factor authentication to publish packages (including to the `@templara` org).
 
-**3. Log in on your machine**
+1. Go to [npmjs.com/settings/~/tfa](https://www.npmjs.com/settings/~/tfa)
+2. Enable 2FA with mode **"Authorization and publishing"** (not "authorization only")
+3. Re-login locally:
 
 ```sh
+npm logout
 npm login
 npm whoami   # should print your npm username
 ```
+
+**3. Create the `@templara` org**
+
+- Go to [npmjs.com/org/create](https://www.npmjs.com/org/create)
+- Name it `templara` — this unlocks scoped packages like `@templara/core`
 
 **4. Install repo deps** (if you haven't)
 
@@ -232,7 +238,7 @@ That runs, in order:
 
 1. `pnpm release:check` — typecheck + test
 2. `pnpm build` — compile all packages to `dist/`
-3. `changeset publish` — upload tarballs to npm
+3. `pnpm publish:packages` — upload tarballs to npm in dependency order
 
 Verify:
 
@@ -300,7 +306,7 @@ Or run the steps manually if you prefer:
 ```sh
 pnpm run release:check   # typecheck + test
 pnpm run build           # build dist/
-changeset publish        # upload to npm
+pnpm publish:packages    # upload to npm (or: pnpm release)
 ```
 
 Tag the release (optional but good practice):
@@ -320,11 +326,44 @@ git push origin v0.1.1
 | `pnpm version-packages` | Bump versions + update changelogs |
 | `pnpm release:check` | Typecheck + test gate |
 | `pnpm build` | Build all package `dist/` outputs |
+| `pnpm publish:packages` | Publish built packages to npm (ordered) |
 | `pnpm release` | check → build → publish |
 
 ---
 
 ### Troubleshooting
+
+**`TypeError: Cannot read properties of undefined (reading 'includes')` during `changeset publish`**
+
+This is a known `@changesets/cli@2.31.0` bug when using pnpm 11 — it crashes instead of showing the real npm error. Use the repo publish script instead:
+
+```sh
+pnpm run build
+pnpm publish:packages
+```
+
+**`403 Forbidden` — "Two-factor authentication ... is required to publish"**
+
+npm blocks publishes until 2FA is enabled on your account. Fix:
+
+1. [Enable 2FA](https://www.npmjs.com/settings/~/tfa) → **Authorization and publishing**
+2. `npm logout && npm login`
+3. Publish with your authenticator code:
+
+```sh
+NPM_OTP=123456 pnpm publish:packages
+```
+
+Replace `123456` with the current 6-digit code from your authenticator app. You only need one OTP for the whole run.
+
+**Other `403 Forbidden` errors**
+
+```sh
+npm whoami                    # confirm you're logged in
+npm org ls templara           # confirm you're an owner of @templara
+```
+
+If `npm whoami` fails, run `npm login` again. You must own the `@templara` org to publish scoped packages.
 
 **Stuck in Vim during a git command**
 
