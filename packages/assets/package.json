@@ -1,6 +1,6 @@
 {
   "name": "@templara/assets",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -12,7 +12,8 @@
     "!dist/**/*.test.js",
     "!dist/**/*.test.d.ts",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "exports": {
     ".": {

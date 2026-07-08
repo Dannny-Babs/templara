@@ -1,0 +1,22 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.2/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "fixed": [
+    [
+      "@templara/core",
+      "@templara/renderer",
+      "@templara/react-renderer",
+      "@templara/editor",
+      "@templara/pdf",
+      "@templara/templates",
+      "@templara/assets",
+      "@templara/cli"
+    ]
+  ],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": ["@templara/docs", "@templara/studio", "@templara/playground"]
+}

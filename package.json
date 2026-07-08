@@ -6,14 +6,19 @@
   "packageManager": "pnpm@11.7.0",
   "scripts": {
     "build": "pnpm -r build",
+    "changeset": "changeset",
     "dev": "pnpm --filter @templara/studio dev",
     "docs": "pnpm --filter @templara/docs dev",
     "playground": "pnpm --filter @templara/playground dev",
+    "release": "pnpm run release:check && pnpm run build && changeset publish",
+    "release:check": "CI=true pnpm run typecheck && CI=true pnpm run test",
     "studio": "pnpm --filter @templara/studio dev",
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "version-packages": "changeset version"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

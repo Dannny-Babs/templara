@@ -1,6 +1,6 @@
 {
   "name": "@templara/cli",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -11,7 +11,8 @@
     "!dist/**/*.test.js",
     "!dist/**/*.test.d.ts",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "exports": {
     ".": {
