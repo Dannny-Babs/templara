@@ -1132,7 +1132,7 @@ export default function TemplaraLanding() {
               style={{
                 margin: 0,
                 fontSize: isSm ? 36 : bp === "md" ? 44 : 56,
-                fontWeight: 700,
+                fontWeight: 600,
                 letterSpacing: "-0.02em",
                 lineHeight: 1.08,
                 maxWidth: 700,
