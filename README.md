@@ -121,6 +121,29 @@ Package API references:
 - [@templara/editor](packages/editor/README.md)
 - [@templara/pdf](packages/pdf/README.md)
 - [@templara/templates](packages/templates/README.md)
+- [@templara/assets](packages/assets/README.md)
+- [@templara/cli](packages/cli/README.md)
+
+## Install
+
+Published packages use the `@templara` scope on npm. Start with core for schema and types, or renderer for render-only workflows:
+
+```sh
+npm install @templara/core
+# or
+pnpm add @templara/renderer @templara/react-renderer
+```
+
+Common combinations:
+
+| Goal | Packages |
+| --- | --- |
+| Render documents from template JSON | `@templara/core`, `@templara/renderer`, `@templara/react-renderer` |
+| Embed the visual editor | `@templara/editor` (pulls renderer + preview dependencies) |
+| Export PDFs in the browser | `@templara/pdf` |
+| Starter invoice/BOL/receipt templates | `@templara/templates` |
+
+All publishable packages are versioned together at `0.1.0` and share a single changelog entry per release.
 
 ## Development
 
@@ -140,6 +163,55 @@ pnpm run test
 pnpm run build
 ```
 
+Release gate before publishing:
+
+```sh
+pnpm run release:check
+```
+
+## Publishing
+
+This repo uses [Changesets](https://github.com/changesets/changesets) to version and publish `@templara/*` packages. Apps (`studio`, `docs`, `playground`) are private and not published.
+
+### One-time setup
+
+1. Create an npm account at [npmjs.com](https://www.npmjs.com/signup)
+2. Create the `@templara` org at [npmjs.com/org/create](https://www.npmjs.com/org/create)
+3. Log in locally:
+
+```sh
+npm login
+npm whoami
+```
+
+### Day-to-day release flow
+
+When you change a publishable package, add a changeset:
+
+```sh
+pnpm changeset
+```
+
+Before release, apply version bumps and update changelogs:
+
+```sh
+pnpm version-packages
+```
+
+Commit the version and changelog changes, then publish:
+
+```sh
+pnpm release
+```
+
+`pnpm release` runs typecheck + test, builds all packages, then runs `changeset publish`. Scoped packages publish with public access.
+
+Verify after publish:
+
+```sh
+npm view @templara/core version
+```
+
 ## Key Engineering Rules
 
 - Template JSON is the source of truth.
@@ -155,4 +227,3 @@ pnpm run build
 - Harden table editing with richer row/column keyboard commands and clearer cell-context inspector affordances.
 - Add richer diagnostics navigation for validation paths that do not map to a node.
 - Move local project persistence behind an IndexedDB/server-ready adapter when binary assets arrive.
-- Prepare npm publishing metadata once package APIs stabilize.
