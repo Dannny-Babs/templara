@@ -1048,29 +1048,31 @@ const documentThumbLineStyle: CSSProperties = {
 };
 
 const primaryButtonStyle: CSSProperties = {
-  height: 39,
+  height: 42,
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
   padding: "0 16px",
-  borderRadius: 12,
+  borderRadius: 10,
   border: "1px solid rgba(82, 8, 228, 0.47)",
   background: "#7535f3",
   color: "#ffffff",
   font: "500 13.6px/16.32px Geist, ui-sans-serif, system-ui, sans-serif",
   cursor: "pointer",
+  cornerShape: "squircle",
   boxShadow:
     "inset 0 3px 5px 1px rgba(188, 155, 253, 0.58), 0 2px 4px rgba(0, 0, 0, 0.12), 0 4px 3px rgba(0, 0, 0, 0.08)",
   whiteSpace: "nowrap",
 };
 
 const secondaryButtonStyle: CSSProperties = {
-  height: 39,
+  height: 42,
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
   padding: "0 16px",
-  borderRadius: 12,
+  borderRadius: 10,
+  cornerShape: "squircle",
   border: "1px solid #d9d9d9",
   background: "#ffffff",
   color: "#616161",
