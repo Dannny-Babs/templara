@@ -171,46 +171,198 @@ pnpm run release:check
 
 ## Publishing
 
-This repo uses [Changesets](https://github.com/changesets/changesets) to version and publish `@templara/*` packages. Apps (`studio`, `docs`, `playground`) are private and not published.
+This repo uses [Changesets](https://github.com/changesets/changesets) to version and publish `@templara/*` packages.
 
-### One-time setup
+**Published (8 packages, versioned together):**
 
-1. Create an npm account at [npmjs.com](https://www.npmjs.com/signup)
-2. Create the `@templara` org at [npmjs.com/org/create](https://www.npmjs.com/org/create)
-3. Log in locally:
+| Package | Role |
+| --- | --- |
+| `@templara/core` | Schema, bindings, validation |
+| `@templara/renderer` | Template + data → render tree |
+| `@templara/react-renderer` | Render tree → React preview |
+| `@templara/editor` | Visual editor |
+| `@templara/pdf` | Browser PDF export |
+| `@templara/templates` | Starter templates + sample data |
+| `@templara/assets` | Fonts and asset helpers |
+| `@templara/cli` | CLI scaffolding |
+
+**Not published:** `@templara/docs`, `@templara/studio`, `@templara/playground`
+
+All eight packages share one version number per release (configured as a fixed group in `.changeset/config.json`).
+
+---
+
+### One-time setup (do this once)
+
+**1. npm account**
+
+- Sign up at [npmjs.com/signup](https://www.npmjs.com/signup)
+- Enable 2FA (recommended for publishing)
+
+**2. Create the `@templara` org**
+
+- Go to [npmjs.com/org/create](https://www.npmjs.com/org/create)
+- Name it `templara` — this unlocks scoped packages like `@templara/core`
+
+**3. Log in on your machine**
+
+```sh
+npm login
+npm whoami   # should print your npm username
+```
+
+**4. Install repo deps** (if you haven't)
+
+```sh
+pnpm install
+```
+
+---
+
+### First publish (`0.1.0`)
+
+The repo is already prepared: packages are at `0.1.0`, LICENSE files and changelogs exist, Changesets is configured. You just need to publish:
+
+```sh
+# from repo root
+pnpm release
+```
+
+That runs, in order:
+
+1. `pnpm release:check` — typecheck + test
+2. `pnpm build` — compile all packages to `dist/`
+3. `changeset publish` — upload tarballs to npm
+
+Verify:
+
+```sh
+npm view @templara/core version    # → 0.1.0
+npm install @templara/core         # should work
+```
+
+---
+
+### Every release after that
+
+Think of it as three phases: **changeset → version → publish**.
+
+#### Phase 1 — After you merge feature work
+
+Whenever you change code in a publishable package, add a changeset **before** or **with** your PR:
+
+```sh
+pnpm changeset
+```
+
+The CLI will ask:
+
+1. **Which packages changed?** — space to select, enter to confirm
+2. **Bump type** — `patch` (bugfix), `minor` (feature), `major` (breaking)
+3. **Summary** — one line for the changelog
+
+This creates a file in `.changeset/` (e.g. `.changeset/happy-lions-dance.md`). Commit it with your code changes.
+
+> Because all packages are in a fixed group, selecting any one bumps **all eight** to the same version.
+
+#### Phase 2 — When you're ready to cut a release
+
+Apply version bumps and regenerate changelogs:
+
+```sh
+pnpm version-packages
+```
+
+This will:
+
+- Read all `.changeset/*.md` files
+- Bump `0.1.0` → `0.1.1` (or `0.2.0`, `1.0.0`, etc.)
+- Update every `packages/*/CHANGELOG.md`
+- Update `package.json` versions
+- Delete the consumed changeset files
+
+Commit and push:
+
+```sh
+git add -A
+git commit -m "chore: version packages"
+git push
+```
+
+#### Phase 3 — Publish to npm
+
+```sh
+pnpm release
+```
+
+Or run the steps manually if you prefer:
+
+```sh
+pnpm run release:check   # typecheck + test
+pnpm run build           # build dist/
+changeset publish        # upload to npm
+```
+
+Tag the release (optional but good practice):
+
+```sh
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+---
+
+### Quick reference
+
+| Command | What it does |
+| --- | --- |
+| `pnpm changeset` | Record what changed (creates `.changeset/*.md`) |
+| `pnpm version-packages` | Bump versions + update changelogs |
+| `pnpm release:check` | Typecheck + test gate |
+| `pnpm build` | Build all package `dist/` outputs |
+| `pnpm release` | check → build → publish |
+
+---
+
+### Troubleshooting
+
+**Stuck in Vim during a git command**
+
+Press `Esc`, type `:qa!`, press Enter. That exits without saving. If git was waiting for a commit message, the commit was cancelled — run the command again.
+
+**`403` or `ENEEDAUTH` on publish**
 
 ```sh
 npm login
 npm whoami
 ```
 
-### Day-to-day release flow
+Make sure your account is a member of the `@templara` org with publish rights.
 
-When you change a publishable package, add a changeset:
+**`404` on `@templara/core` after publish**
 
-```sh
-pnpm changeset
-```
+The org may not exist yet, or the first publish of a scoped package needs `--access public` (already set in each package's `publishConfig`).
 
-Before release, apply version bumps and update changelogs:
+**`pnpm release` fails on tests**
 
-```sh
-pnpm version-packages
-```
+Fix failures first, or run `pnpm run build && changeset publish` if you already ran checks separately.
 
-Commit the version and changelog changes, then publish:
+**No pending changesets when running `version-packages`**
 
-```sh
-pnpm release
-```
+You forgot `pnpm changeset` after your last code changes. Add one, then run `version-packages` again.
 
-`pnpm release` runs typecheck + test, builds all packages, then runs `changeset publish`. Scoped packages publish with public access.
+---
 
-Verify after publish:
+### What lands on npm
 
-```sh
-npm view @templara/core version
-```
+Each published tarball includes:
+
+- `dist/` (compiled JS + types)
+- `README.md`
+- `LICENSE`
+- `CHANGELOG.md`
+
+Apps and examples are never published — only the eight packages under `packages/`.
 
 ## Key Engineering Rules
 
