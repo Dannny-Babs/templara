@@ -11,8 +11,10 @@
 
 **Merge order:** #7 then #6 (or close #7 and merge #6 alone — Wave 5 includes Wave 4 commits).
 
-**Wave 6** (this branch): title when opening:
+**Wave 6** (merged #8): `feat(editor): Wave 6 preview chrome, resizable layers panel, host guide`
 
-`feat(editor): Wave 6 preview chrome, resizable layers panel, host integration guide`
+**Wave 7** open with:
 
-Compare: https://github.com/Dannny-Babs/templara/compare/main...integration/rr-doc-builder-2-wave6
+`feat(editor): Wave 7 data-panel virtualization and user-guide screenshots`
+
+Compare: https://github.com/Dannny-Babs/templara/compare/main...integration/rr-doc-builder-2-wave7?expand=1

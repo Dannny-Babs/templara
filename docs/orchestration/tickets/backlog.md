@@ -11,9 +11,9 @@ Planner expands remaining stubs into full §6 tickets when scheduled.
 <a id="f2"></a>
 
 ### F2 — Remaining user-guide screenshots
-**Status:** in progress (Wave 7)  
+**Status:** mostly done (Wave 7) — diagnostics still to re-capture  
 **Depends on:** F1  
-**One-liner:** Capture the eight remaining Studio screenshots listed in [project-context-and-roadmap.md](../../project-context-and-roadmap.md) Docs & Onboarding Follow-ups.
+**One-liner:** Captured via `scripts/capture-user-guide.mjs`; placeholders replaced in user-guide MDX except a stronger diagnostics shot.
 
 <a id="f6"></a>
 
