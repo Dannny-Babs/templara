@@ -1,11 +1,10 @@
 import type {
-  DocNode,
   DocumentTemplate,
-  FlowNode,
   FormulaExpression,
   FormulaOperand,
   VariableDefinition,
 } from "./index.js";
+import { forEachNode, type AnyNode } from "./walk.js";
 
 export type ValidationSeverity = "error" | "warning";
 
@@ -24,8 +23,6 @@ export interface ValidationResult {
   warnings: ValidationIssue[];
   issues: ValidationIssue[];
 }
-
-type AnyNode = DocNode | FlowNode;
 
 /**
  * Structurally validates a template before it is rendered or persisted. This is
@@ -321,63 +318,6 @@ function operandVariableIds(operands: FormulaOperand[]): string[] {
   }
 
   return ids;
-}
-
-function forEachNode(
-  nodes: AnyNode[],
-  visit: (node: AnyNode, path: string) => void,
-  prefix = "",
-): void {
-  nodes.forEach((node, index) => {
-    const nodePath = `${prefix}node:${node.id || index}`;
-    visit(node, nodePath);
-
-    for (const children of childCollections(node)) {
-      forEachNode(children, visit, `${nodePath}.`);
-    }
-  });
-}
-
-function childCollections(node: AnyNode): AnyNode[][] {
-  switch (node.type) {
-    case "shape":
-      return node.children ? [node.children] : [];
-    case "group":
-    case "flowRegion":
-    case "section":
-    case "stack":
-      return [node.children];
-    case "repeat": {
-      const collections: AnyNode[][] = [node.children];
-      if (node.header) {
-        collections.push(node.header);
-      }
-      if (node.emptyState) {
-        collections.push(node.emptyState);
-      }
-      return collections;
-    }
-    case "conditional":
-      return node.fallback ? [node.children, node.fallback] : [node.children];
-    case "grid": {
-      const collections: AnyNode[][] = [];
-      const rows = [node.header, node.row, node.footer];
-
-      for (const row of rows) {
-        if (!row) {
-          continue;
-        }
-
-        for (const cell of row.cells) {
-          collections.push(cell.content);
-        }
-      }
-
-      return collections;
-    }
-    default:
-      return [];
-  }
 }
 
 function isPositiveFinite(value: number): boolean {

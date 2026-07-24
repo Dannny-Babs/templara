@@ -1,0 +1,61 @@
+---
+title: What Is Templara?
+description: A plain-language introduction to the Templara Studio for people who have never used it.
+---
+
+This guide is for the person actually using Templara to build a document — no coding required. If you have never opened Templara before, start here and read the pages in order.
+
+## Templara in one sentence
+
+Templara is a tool for **designing a document once and then filling it with different data over and over** — like designing an invoice layout a single time, then printing a fresh invoice for every customer automatically.
+
+```txt
+Design the layout once.
+Connect it to your data.
+Get a finished document for every record.
+```
+
+## A real example
+
+Imagine you send invoices. Every invoice looks the same — logo at the top, customer address, a table of line items, a total at the bottom. The only thing that changes is the **information**: the customer name, the amounts, the dates.
+
+With Templara you:
+
+1. **Design** the invoice layout once (the boxes, the table, where the logo goes).
+2. **Connect** each spot to a piece of data (this box shows the customer's name, that box shows the total).
+3. **Preview** it with real data to see the finished invoice.
+
+Change the data, and you get a brand-new finished invoice — without redesigning anything.
+
+## The one idea that explains everything: editing vs. previewing
+
+This is the most important thing to understand, and it trips up almost everyone at first:
+
+- **The editor (where you design)** shows the *template* — the reusable layout. It shows placeholders like `{{customer.name}}` instead of a real name. A repeating table shows **one** example row, not every row.
+- **The preview (where you check your work)** shows the *finished document* — real values filled in, every table row expanded, and the pages split correctly.
+
+> **📷 Screenshot needed —** _Side by side: the editor showing one placeholder row, and the preview showing many real rows._
+
+Why the split? If the editor tried to show all 100 rows of a real invoice while you were designing, the screen would be a cluttered mess and you couldn't tell what you were editing. So the editor stays clean and shows the *design*; the preview shows the *result*.
+
+Remember this rule and everything else clicks:
+
+> **You design a template. Preview shows what it becomes.**
+
+## What you can build
+
+Templara is made for documents where the layout matters and the data changes:
+
+- Invoices and receipts
+- Bills of lading (BOLs) and shipping labels
+- Pay stubs
+- Certificates and structured reports
+
+## What's next
+
+<Cards>
+  <Card title="Your first document" href="/docs/user-guide/your-first-document" />
+  <Card title="Tour of the interface" href="/docs/user-guide/the-interface" />
+  <Card title="Connecting data" href="/docs/user-guide/binding-data" />
+  <Card title="Common questions (FAQ)" href="/docs/user-guide/faq" />
+</Cards>

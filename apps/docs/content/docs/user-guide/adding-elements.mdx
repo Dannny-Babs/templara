@@ -1,0 +1,85 @@
+---
+title: Adding Elements
+description: How to add text, images, tables, and every other building block to your document.
+---
+
+Everything on your page — text, logos, tables, barcodes — is an **element**. This page shows how to add, place, move, and remove them.
+
+## The basic move: pick a tool, then place it
+
+1. Click a tool in the **insert tool rail** (far-left icons).
+2. Click (or click-and-drag) on the canvas where you want it.
+3. Press **Esc** or pick **Select (V)** to go back to normal.
+
+> **📷 Screenshot needed —** _Choosing the Text tool, then clicking on the canvas to place a text box._
+
+You can also use the **Insert panel** to drop in ready-made building blocks (a whole company header, address block, totals block, etc.) instead of building from scratch.
+
+## The elements, one by one
+
+### Text (T)
+The most common element. A box that holds words. Text can be:
+
+- **Plain text** you type (like "INVOICE" or "Thank you").
+- **A data placeholder** that fills in from your data (like the customer's name). See [Connecting data](/docs/user-guide/binding-data).
+
+Double-click a text box to edit its words.
+
+### Image (I)
+A picture — most often a **logo**. Place it, then use the inspector to set its source and size.
+
+### Rectangle (R), Line (L), Shape (O)
+Decoration and structure: boxes for backgrounds or borders, lines for dividers, and shapes like circles. Great for separating sections and adding color.
+
+### Table (G)
+A grid of rows and columns — for example, a list of charges. You can:
+
+- Click directly into a cell to edit it.
+- Drag column edges on the canvas to resize columns.
+- Mix **fixed rows** (always the same) with **bound columns** (filled from data).
+
+### Repeat (E)
+A **repeating section** — the key to lists. You design **one** row/block, connect it to a list in your data (like `invoice.items`), and Templara repeats it once for every item **in the preview**.
+
+> Important: in the editor a repeat shows **one** example row. In the preview it expands to the real number of rows. This is normal — see the [overview](/docs/user-guide/overview).
+
+### Condition (C)
+A section that **only shows up when a rule is true**. Example: only show a "Past due" stamp when the invoice is overdue. If the rule is false, the section disappears in the preview.
+
+### Barcode (B) and QR Code (Q)
+Scannable codes. Common on shipping labels and BOLs. You can type a fixed value or connect one to your data (e.g. a tracking number).
+
+### Frame (F)
+A **container** you can put other elements inside, so they move and group together. Handy for keeping a header's logo and address as one unit.
+
+### Signature (S)
+A dedicated signature area for documents that need a sign-off.
+
+## Moving, resizing, and arranging
+
+Once something is placed:
+
+- **Move it:** with the Select tool, drag it. Or select it and nudge with the **arrow keys** (hold **Shift** to move in bigger steps).
+- **Resize it:** drag the handles on its edges/corners.
+- **Line it up:** guides and snapping help things align automatically. See [Canvas & pages](/docs/user-guide/canvas-and-pages).
+- **Duplicate it:** select it and press **Ctrl/Cmd + D** (or right-click → Duplicate).
+- **Delete it:** select it and press **Delete** or **Backspace**.
+- **Copy/paste:** **Ctrl/Cmd + C**, then **Ctrl/Cmd + V**.
+
+## Stacking order (what's in front)
+
+When elements overlap, the one "in front" wins. Select an element and use:
+
+- **Bring Front / Send Back**, or step it **Forward / Backward** — from the right-click menu or the [keyboard shortcuts](/docs/user-guide/keyboard-shortcuts).
+
+## Grouping
+
+Select several elements and **Group** them (**Ctrl/Cmd + G**) so they move together. **Ungroup** with **Ctrl/Cmd + Shift + G**.
+
+## What's next
+
+<Cards>
+  <Card title="Connecting data" href="/docs/user-guide/binding-data" />
+  <Card title="Layers & inspector" href="/docs/user-guide/layers-and-inspector" />
+  <Card title="Canvas & pages" href="/docs/user-guide/canvas-and-pages" />
+</Cards>

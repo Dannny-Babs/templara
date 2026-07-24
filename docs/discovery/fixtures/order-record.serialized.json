@@ -1,0 +1,73 @@
+{
+  "_note": "[SYNTHESIZED] Shape-faithful Order RRecord graph as serialize() would emit with a fields map. The Order object (recipes/base/objects/order.ts) has ~135 directly-decorated fields and 29 @RConnection connections; only a representative subset is shown. Every record (Order + every connected record) carries the Identity ($id,$externalId) + Audit ($createdAt,$createdBy,$version,...) system block from the '*'-targeted mixins.",
+
+  "id": "ord_77310",
+  "objectKey": "order",
+  "orgId": "org_9f2a",
+  "source": "manual",
+  "externalId": "TMS-77310",
+
+  "$id": "ord_77310",
+  "$externalId": "TMS-77310",
+  "$createdAt": "2026-06-28T09:15:00.000Z",
+  "$createdBy": "usr_ops",
+  "$createdByFullName": "Sam Dispatcher",
+  "$updatedAt": "2026-07-01T12:00:00.000Z",
+  "$updatedBy": "usr_ops",
+  "$updatedByFullName": "Sam Dispatcher",
+  "$ownerId": "usr_ops",
+  "$version": 12,
+  "$source": "manual",
+
+  "fullId": "ORDER-77310",
+  "poNum": "PO-9910",
+  "refNum": "REF-55021",
+  "loadTenderNum": "LT-33018",
+  "status": "delivered",
+  "billingTerms": "shipperPrepaid",
+  "totalAmount": { "amount": 3150, "currencyCode": "USD" },
+
+  "customer": {
+    "id": "cus_acme", "objectKey": "customer", "orgId": "org_9f2a",
+    "$id": "cus_acme", "$externalId": "QBO-CUST-4471", "$version": 22,
+    "fullId": "CUSTOMER-3391", "name": "Acme Manufacturing LLC"
+  },
+
+  "shipper": {
+    "id": "adr_sh10", "objectKey": "address", "$id": "adr_sh10", "$externalId": null,
+    "companyName": "Acme Plant 2", "address1": "900 Assembly Dr",
+    "city": "Toledo", "state": "OH", "stateCode": "OH", "country": "US", "countryCode": "US",
+    "postalCode": "43604"
+  },
+  "consignee": {
+    "id": "adr_cn10", "objectKey": "address", "$id": "adr_cn10", "$externalId": null,
+    "companyName": "Acme Manufacturing LLC", "address1": "18 Foundry Rd", "address2": "Dock 4",
+    "city": "Detroit", "state": "MI", "stateCode": "MI", "country": "US", "countryCode": "US",
+    "postalCode": "48201"
+  },
+
+  "commodities": [
+    {
+      "id": "com_10a", "objectKey": "commodity", "$id": "com_10a", "$externalId": null,
+      "commodityType": "pallets", "description": "Palletized auto parts",
+      "freightClass": "70", "pieces": 12, "quantity": 12, "weight": 18400,
+      "length": 48, "width": 40, "height": 60
+    }
+  ],
+
+  "stops": [
+    {
+      "id": "stp_10o", "objectKey": "stop", "$id": "stp_10o", "ordinal": 1,
+      "location": { "id": "adr_sh10", "objectKey": "address", "$id": "adr_sh10", "companyName": "Acme Plant 2", "city": "Toledo", "state": "OH", "postalCode": "43604" }
+    },
+    {
+      "id": "stp_10d", "objectKey": "stop", "$id": "stp_10d", "ordinal": 2,
+      "location": { "id": "adr_cn10", "objectKey": "address", "$id": "adr_cn10", "companyName": "Acme Manufacturing LLC", "city": "Detroit", "state": "MI", "postalCode": "48201" }
+    }
+  ],
+
+  "lineItems": [
+    { "id": "fli_001", "objectKey": "financialLineItem", "$id": "fli_001", "$externalId": null, "type": "Line haul", "quantity": 1, "rate": { "amount": 2950, "currencyCode": "USD" }, "total": { "amount": 2950, "currencyCode": "USD" } },
+    { "id": "fli_002", "objectKey": "financialLineItem", "$id": "fli_002", "$externalId": null, "type": "Fuel surcharge", "quantity": 1, "rate": { "amount": 200, "currencyCode": "USD" }, "total": { "amount": 200, "currencyCode": "USD" } }
+  ]
+}

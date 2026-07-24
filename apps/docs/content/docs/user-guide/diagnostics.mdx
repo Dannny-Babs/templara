@@ -1,0 +1,50 @@
+---
+title: Diagnostics
+description: Templara's built-in problem checker, and how to read and fix what it reports.
+---
+
+Templara constantly checks your document and tells you about problems **before** you export. That's **Diagnostics** — think of it as a spell-checker for your document.
+
+## Where to find it
+
+A **diagnostics badge** sits near the bottom of the editor. It gives you an at-a-glance status. Click it to open the **Diagnostics** panel, which lists every issue found.
+
+> **📷 Screenshot needed —** _The diagnostics badge and the open Diagnostics panel grouped by severity._
+
+## The three severities
+
+Issues are grouped into three levels so you know what's urgent:
+
+| Level | Meaning | Do you have to fix it? |
+| --- | --- | --- |
+| **Blocking** | A real problem that will break the output. | **Yes** — fix before exporting. |
+| **Warnings** | Something that might not look right (e.g. content overflow, a possibly-missing value). | Recommended — review it. |
+| **Info** | Helpful notes, not problems. | No — informational only. |
+
+## How to use it
+
+1. Click the badge to open the panel.
+2. Start with **Blocking** items — these must be fixed.
+3. Read each message; it describes the problem in plain terms.
+4. Where possible, the diagnostic points you to the element or field involved so you can jump to it and fix it.
+5. Re-check the badge — it updates as you fix things.
+
+## Common things it flags
+
+- **Missing data / binding** — you bound to a field that isn't in the data.
+- **Overflow** — content is too big for its space or the page.
+- **Repeat layout issues** — a repeating row doesn't fit or paginate cleanly.
+
+## Why this is your friend
+
+It's much better to learn about a problem here than to send a customer a broken invoice. Make a habit of glancing at the badge before every export, and clear all **Blocking** items first.
+
+> We're actively improving how this panel looks and how easily it jumps you to the exact problem. The information it gives you is reliable today; the polish is getting better.
+
+## What's next
+
+<Cards>
+  <Card title="Preview & export" href="/docs/user-guide/preview-and-export" />
+  <Card title="Connecting data" href="/docs/user-guide/binding-data" />
+  <Card title="FAQ" href="/docs/user-guide/faq" />
+</Cards>

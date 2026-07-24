@@ -1,0 +1,373 @@
+<div class="editor__layout" style="padding: 40px 32px; width: 100%;" dir="ltr">
+
+  <!-- ============ HEADER (280 + 329 + 130 = 739) ============ -->
+  <table class="editor__table" dir="ltr" style="border-collapse: separate; border-spacing: 0;">
+    <colgroup><col><col><col></colgroup>
+    <tbody>
+      <tr class="editor__tableRow" dir="ltr">
+        <td class="editor__tableCell" dir="ltr" style="width: 280px; padding: 0.5rem 0 1rem 0; vertical-align: top; text-align: start; border-color: transparent transparent rgb(222, 227, 237) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+          <h2 class="editor__heading_h2" dir="ltr" style="text-align: start;">
+            <b><strong class="editor__text editor__text_bold" style="font-size: 1.6rem; white-space: pre-wrap;">Pay stub: </strong></b><b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.6rem; white-space: pre-wrap;">{{record.fullId}}</strong></b>
+          </h2>
+        </td>
+        <td class="editor__tableCell" dir="ltr" style="width: 329px; padding: 0.5rem 0.75rem 1rem 0.75rem; vertical-align: top; text-align: end; border-color: transparent transparent rgb(222, 227, 237) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+          <p class="editor__paragraph" dir="ltr" style="text-align: right;">
+            <b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{org.orgAddress.companyName}}</strong></b><br>
+            <span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{org.orgAddress.address1}}</span>{{#if org.orgAddress.address2}}<span class="editor__text" style="font-size: 1.2rem; white-space: pre-wrap;"> </span><span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{org.orgAddress.address2}}</span>{{/if}}<br>
+            {{#if org.orgAddress.city}}<span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{org.orgAddress.city}}</span>{{/if}}{{#if org.orgAddress.state}}<span class="editor__text" style="font-size: 1.2rem; white-space: pre-wrap;">, </span><span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{org.orgAddress.state}}</span>{{/if}}{{#if org.orgAddress.postalCode}}<span class="editor__text" style="font-size: 1.2rem; white-space: pre-wrap;">, </span><span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{org.orgAddress.postalCode}}</span>{{/if}}{{#if org.orgAddress.country}}<span class="editor__text" style="font-size: 1.2rem; white-space: pre-wrap;">, </span><span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{org.orgAddress.country}}</span>{{/if}}<br>
+            <span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{org.orgPhone}}</span><br>
+            <span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{org.orgEmail}}</span>
+          </p>
+        </td>
+        <td class="editor__tableCell" dir="ltr" style="width: 130px; padding: 0.5rem 0 1rem 0; vertical-align: top; text-align: end; border-color: transparent transparent rgb(222, 227, 237) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+          {{#if org.logoUrl}}
+            <p class="editor__paragraph" dir="ltr" style="text-align: right;"><img src="{{org.logoUrl}}" alt="Logo image" width="80" height="inherit"></p>
+          {{/if}}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ============ DRIVER + PAYMENT CARD (389 + 350 = 739) ============ -->
+  <table class="editor__table" dir="ltr" style="border-collapse: separate; border-spacing: 0; margin-top: 1.25rem; margin-bottom: 1.25rem;">
+    <colgroup><col><col></colgroup>
+    <tbody>
+      <tr class="editor__tableRow" dir="ltr">
+        <td class="editor__tableCell" dir="ltr" style="width: 389px; padding: 0 0.75rem 1rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+          {{#if record.isCommissions}}
+            <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.2rem; white-space: pre-wrap;">Commissionee</strong></b></p>
+          {{/if}}
+          {{#unless record.isCommissions}}
+            <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.2rem; white-space: pre-wrap;">Driver</strong></b></p>
+          {{/unless}}
+          <p class="editor__paragraph" dir="ltr">
+            <b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{record.user.profile.firstName}}</strong></b> <b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{record.user.profile.lastName}}</strong></b>{{#if record.user.profile.address1}}<br><span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{record.user.profile.address1}}</span>{{#if record.user.profile.address2}}<span class="editor__text" style="font-size: 1.2rem; white-space: pre-wrap;"> </span><span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{record.user.profile.address2}}</span>{{/if}}{{/if}}{{#if record.user.profile.city}}<br><span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{record.user.profile.city}}</span>{{/if}}{{#if record.user.profile.state}}<span class="editor__text" style="font-size: 1.2rem; white-space: pre-wrap;">, </span><span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{record.user.profile.state}}</span>{{/if}}{{#if record.user.profile.postal}}<span class="editor__text" style="font-size: 1.2rem; white-space: pre-wrap;">, </span><span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{record.user.profile.postal}}</span>{{/if}}{{#if record.user.profile.country}}<span class="editor__text" style="font-size: 1.2rem; white-space: pre-wrap;">, </span><span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{record.user.profile.country}}</span>{{/if}}
+          </p>
+        </td>
+        <td class="editor__tableCell" dir="ltr" style="width: 350px; padding: 1rem; vertical-align: top; text-align: start; border-color: rgb(222, 227, 237); border-style: solid; border-width: 1pt;">
+          <table class="editor__table" dir="ltr" style="border-collapse: separate; border-spacing: 0;">
+            <colgroup><col><col></colgroup>
+            <tbody>
+              <tr class="editor__tableRow" dir="ltr">
+                <td class="editor__tableCell" dir="ltr" style="width: 170px; padding: 0.25rem 0.5rem 0.75rem 0; vertical-align: middle; text-align: start; border-color: transparent;">
+                  <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.2rem; white-space: pre-wrap;">Total pay</strong></b></p>
+                </td>
+                <td class="editor__tableCell" dir="ltr" style="width: 146px; padding: 0.25rem 0 0.75rem 0.5rem; vertical-align: middle; text-align: end; border-color: transparent;">
+                  <p class="editor__paragraph" dir="ltr" style="text-align: right;"><b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.3rem; white-space: pre-wrap;">{{record.total.withDecimalsAndCurrencyCode}}</strong></b></p>
+                </td>
+              </tr>
+              <tr class="editor__tableRow" dir="ltr">
+                <td class="editor__tableCell" dir="ltr" style="width: 170px; padding: 0.25rem 0.5rem 0.25rem 0; vertical-align: middle; text-align: start; border-color: transparent;">
+                  <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.2rem; white-space: pre-wrap;">Pay period start date</strong></b></p>
+                </td>
+                <td class="editor__tableCell" dir="ltr" style="width: 146px; padding: 0.25rem 0 0.25rem 0.5rem; vertical-align: middle; text-align: end; border-color: transparent;">
+                  <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{record.payPeriodStartDate.shortDate}}</span></p>
+                </td>
+              </tr>
+              <tr class="editor__tableRow" dir="ltr">
+                <td class="editor__tableCell" dir="ltr" style="width: 170px; padding: 0.25rem 0.5rem 0.25rem 0; vertical-align: middle; text-align: start; border-color: transparent;">
+                  <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.2rem; white-space: pre-wrap;">Pay period end date</strong></b></p>
+                </td>
+                <td class="editor__tableCell" dir="ltr" style="width: 146px; padding: 0.25rem 0 0.25rem 0.5rem; vertical-align: middle; text-align: end; border-color: transparent;">
+                  <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{record.payPeriodEndDate.shortDate}}</span></p>
+                </td>
+              </tr>
+              <tr class="editor__tableRow" dir="ltr">
+                <td class="editor__tableCell" dir="ltr" style="width: 170px; padding: 0.25rem 0.5rem 0.25rem 0; vertical-align: middle; text-align: start; border-color: transparent;">
+                  <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.2rem; white-space: pre-wrap;">Pay date</strong></b></p>
+                </td>
+                <td class="editor__tableCell" dir="ltr" style="width: 146px; padding: 0.25rem 0 0.25rem 0.5rem; vertical-align: middle; text-align: end; border-color: transparent;">
+                  <p class="editor__paragraph" dir="ltr" style="text-align: right;"><b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{record.payDate.shortDate}}</strong></b></p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ============ CONTENT (manifests / line items / commission orders) ============ -->
+  <table class="editor__table" dir="ltr" style="border-collapse: separate; border-spacing: 0;">
+    <colgroup><col></colgroup>
+    <tbody>
+
+      {{#unless record.isCommissions}}
+        {{#each record.manifests}}
+          <!-- Manifest card: grey detail (472 + 267 = 739) -->
+          <tr class="editor__tableRow" dir="ltr">
+            <td class="editor__tableCell" dir="ltr" style="width: 739px; padding: 0 0 0.75rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+              <table class="editor__table" dir="ltr" style="border-collapse: separate; border-spacing: 0;">
+                <colgroup><col><col></colgroup>
+                <tbody>
+                  <tr class="editor__tableRow" dir="ltr">
+                    <td class="editor__tableCell" dir="ltr" style="width: 570px; padding: 1rem; vertical-align: top; text-align: start; background-color: rgb(242, 243, 245); border-color: rgb(222, 227, 237) transparent rgb(222, 227, 237) rgb(222, 227, 237); border-top-style: solid; border-top-width: 1pt; border-bottom-style: solid; border-bottom-width: 1pt; border-left-style: solid; border-left-width: 1pt;">
+                      <p class="editor__paragraph" dir="ltr">
+                        <b><strong class="editor__text editor__text_bold" style="font-size: 1.2rem; color: rgb(26, 115, 232); white-space: pre-wrap;">Manifest </strong></b><b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.2rem; color: rgb(26, 115, 232); white-space: pre-wrap;">{{this.fullId}}</strong></b>
+                      </p>
+                      <table class="editor__table" dir="ltr" style="border-collapse: separate; border-spacing: 0;">
+                        <colgroup><col><col></colgroup>
+                        <tbody>
+                          {{#each this.stopsV2}}
+                          <tr class="editor__tableRow" dir="ltr">
+                            <td class="editor__tableCell" dir="ltr" style="width: 110px; padding: 0.15rem 1.5rem 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.07rem; white-space: pre-wrap;">Stop </strong></b><b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.manifestOrdinal}}</strong></b></p>
+                            </td>
+                            <td class="editor__tableCell" dir="ltr" style="width: 428px; padding: 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.location.formattedAddressWithCompanyNameLabel}}</span></p>
+                            </td>
+                          </tr>
+                          {{/each}}
+                          <tr class="editor__tableRow" dir="ltr">
+                            <td class="editor__tableCell" dir="ltr" style="width: 110px; padding: 0.15rem 1.5rem 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.07rem; white-space: pre-wrap;">Start date</strong></b></p>
+                            </td>
+                            <td class="editor__tableCell" dir="ltr" style="width: 428px; padding: 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.manifestStartDate.shortDateTime}}</span></p>
+                            </td>
+                          </tr>
+                          <tr class="editor__tableRow" dir="ltr">
+                            <td class="editor__tableCell" dir="ltr" style="width: 110px; padding: 0.15rem 1.5rem 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.07rem; white-space: pre-wrap;">End date</strong></b></p>
+                            </td>
+                            <td class="editor__tableCell" dir="ltr" style="width: 428px; padding: 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.manifestEndDate.shortDateTime}}</span></p>
+                            </td>
+                          </tr>
+                          {{#if this.totalMiles}}
+                          <tr class="editor__tableRow" dir="ltr">
+                            <td class="editor__tableCell" dir="ltr" style="width: 110px; padding: 0.15rem 1.5rem 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.07rem; white-space: pre-wrap;">Total miles</strong></b></p>
+                            </td>
+                            <td class="editor__tableCell" dir="ltr" style="width: 428px; padding: 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.totalMiles}}</span></p>
+                            </td>
+                          </tr>
+                          {{/if}}
+                        </tbody>
+                      </table>
+                    </td>
+                    <td class="editor__tableCell" dir="ltr" style="width: 169px; padding: 1rem 1rem 1rem 0.75rem; vertical-align: top; text-align: end; background-color: rgb(242, 243, 245); border-color: rgb(222, 227, 237) rgb(222, 227, 237) rgb(222, 227, 237) transparent; border-top-style: solid; border-top-width: 1pt; border-right-style: solid; border-right-width: 1pt; border-bottom-style: solid; border-bottom-width: 1pt;">
+                      <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text" style="font-size: 1rem; color: rgb(108, 117, 125); white-space: pre-wrap;">Total Amt</span></p>
+                      <p class="editor__paragraph" dir="ltr" style="text-align: right;"><b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{this.driverPayTotalCost.withDecimalsAndCurrencyCode}}</strong></b></p>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+        {{/each}}
+      {{/unless}}
+
+      {{#if record.lineItems}}
+        <!-- Combined line items (full-bleed grey header, 90+322+100+100+127 = 739) -->
+        <tr class="editor__tableRow" dir="ltr">
+          <td class="editor__tableCell" dir="ltr" style="width: 739px; padding: 0; vertical-align: top; text-align: start; border-color: rgb(222, 227, 237) rgb(222, 227, 237) transparent rgb(222, 227, 237); border-top-style: solid; border-top-width: 1pt; border-right-style: solid; border-right-width: 1pt; border-left-style: solid; border-left-width: 1pt;">
+            <table class="editor__table" dir="ltr" style="border-collapse: separate; border-spacing: 0;">
+              <colgroup><col><col><col><col><col></colgroup>
+              <tbody>
+                <tr class="editor__tableRow" dir="ltr">
+                  <th class="editor__tableCell editor__tableCellHeader" dir="ltr" style="width: 90px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: start; background-color: rgb(242, 243, 245); border-color: transparent transparent rgb(189, 198, 217) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                    <p class="editor__paragraph" dir="ltr"><span class="editor__text" style="font-size: 0.9rem; color: rgb(95, 99, 104); font-weight: 400; white-space: pre-wrap;">Type</span></p>
+                  </th>
+                  <th class="editor__tableCell editor__tableCellHeader" dir="ltr" style="width: 322px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: start; background-color: rgb(242, 243, 245); border-color: transparent transparent rgb(189, 198, 217) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                    <p class="editor__paragraph" dir="ltr"><span class="editor__text" style="font-size: 0.9rem; color: rgb(95, 99, 104); font-weight: 400; white-space: pre-wrap;">Description</span></p>
+                  </th>
+                  <th class="editor__tableCell editor__tableCellHeader" dir="ltr" style="width: 100px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: end; background-color: rgb(242, 243, 245); border-color: transparent transparent rgb(189, 198, 217) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                    <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text" style="font-size: 0.9rem; color: rgb(95, 99, 104); font-weight: 400; white-space: pre-wrap;">Quantity</span></p>
+                  </th>
+                  <th class="editor__tableCell editor__tableCellHeader" dir="ltr" style="width: 100px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: end; background-color: rgb(242, 243, 245); border-color: transparent transparent rgb(189, 198, 217) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                    <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text" style="font-size: 0.9rem; color: rgb(95, 99, 104); font-weight: 400; white-space: pre-wrap;">Rate</span></p>
+                  </th>
+                  <th class="editor__tableCell editor__tableCellHeader" dir="ltr" style="width: 127px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: end; background-color: rgb(242, 243, 245); border-color: transparent transparent rgb(189, 198, 217) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                    <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text" style="font-size: 0.9rem; color: rgb(95, 99, 104); font-weight: 400; white-space: pre-wrap;">Amount</span></p>
+                  </th>
+                </tr>
+                {{#each record.lineItems ###sortBy:manifest.fullId:asc}}
+                <tr class="editor__tableRow" dir="ltr">
+                  <td class="editor__tableCell" dir="ltr" style="width: 90px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: start; border-color: transparent transparent rgb(222, 227, 237) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                    <p class="editor__paragraph" dir="ltr"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.type}}</span></p>
+                  </td>
+                  <td class="editor__tableCell" dir="ltr" style="width: 322px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: start; border-color: transparent transparent rgb(222, 227, 237) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                    <p class="editor__paragraph" dir="ltr"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.description}}</span></p>
+                  </td>
+                  <td class="editor__tableCell" dir="ltr" style="width: 100px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: end; border-color: transparent transparent rgb(222, 227, 237) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                    <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.quantity}}</span></p>
+                  </td>
+                  <td class="editor__tableCell" dir="ltr" style="width: 100px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: end; border-color: transparent transparent rgb(222, 227, 237) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                    <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.rate.withDecimalsAndCurrencyCode}}</span></p>
+                  </td>
+                  <td class="editor__tableCell" dir="ltr" style="width: 127px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: end; border-color: transparent transparent rgb(222, 227, 237) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                    <p class="editor__paragraph" dir="ltr" style="text-align: right;"><b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.subTotal.withDecimalsAndCurrencyCode}}</strong></b></p>
+                  </td>
+                </tr>
+                {{/each}}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      {{/if}}
+
+      {{#if record.isCommissions}}
+        {{#each record.orders}}
+          <!-- Commission order card: grey detail (472 + 267 = 739) -->
+          <tr class="editor__tableRow" dir="ltr">
+            <td class="editor__tableCell" dir="ltr" style="width: 739px; padding: 0 0 0.75rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+              <table class="editor__table" dir="ltr" style="border-collapse: separate; border-spacing: 0;">
+                <colgroup><col><col></colgroup>
+                <tbody>
+                  <tr class="editor__tableRow" dir="ltr">
+                    <td class="editor__tableCell" dir="ltr" style="width: 570px; padding: 1rem; vertical-align: top; text-align: start; background-color: rgb(242, 243, 245); border-color: rgb(222, 227, 237) transparent rgb(222, 227, 237) rgb(222, 227, 237); border-top-style: solid; border-top-width: 1pt; border-bottom-style: solid; border-bottom-width: 1pt; border-left-style: solid; border-left-width: 1pt;">
+                      {{#if this.customer.name}}
+                      <p class="editor__paragraph" dir="ltr">
+                        <b><strong class="editor__text editor__text_bold" style="font-size: 1.2rem; color: rgb(26, 115, 232); white-space: pre-wrap;">Order </strong></b><b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.2rem; color: rgb(26, 115, 232); white-space: pre-wrap;">{{this.fullId}}</strong></b><span class="editor__text" style="font-size: 1.2rem; color: rgb(26, 115, 232); white-space: pre-wrap;"> &middot; </span><span class="editor__text editor__field" style="font-size: 1.2rem; color: rgb(26, 115, 232); white-space: pre-wrap;">{{this.customer.name}}</span>
+                      </p>
+                      {{/if}}
+                      {{#unless this.customer.name}}
+                      <p class="editor__paragraph" dir="ltr">
+                        <b><strong class="editor__text editor__text_bold" style="font-size: 1.2rem; color: rgb(26, 115, 232); white-space: pre-wrap;">Order </strong></b><b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.2rem; color: rgb(26, 115, 232); white-space: pre-wrap;">{{this.fullId}}</strong></b>
+                      </p>
+                      {{/unless}}
+                      <table class="editor__table" dir="ltr" style="border-collapse: separate; border-spacing: 0;">
+                        <colgroup><col><col></colgroup>
+                        <tbody>
+                          {{#if this.firstOriginStop}}
+                          <tr class="editor__tableRow" dir="ltr">
+                            <td class="editor__tableCell" dir="ltr" style="width: 110px; padding: 0.15rem 1.5rem 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.07rem; white-space: pre-wrap;">Stop 1</strong></b></p>
+                            </td>
+                            <td class="editor__tableCell" dir="ltr" style="width: 428px; padding: 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.firstOriginStop.location.formattedAddressWithCompanyNameLabel}}</span></p>
+                            </td>
+                          </tr>
+                          {{/if}}
+                          {{#if this.lastDestinationStop}}
+                          <tr class="editor__tableRow" dir="ltr">
+                            <td class="editor__tableCell" dir="ltr" style="width: 110px; padding: 0.15rem 1.5rem 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.07rem; white-space: pre-wrap;">Stop 2</strong></b></p>
+                            </td>
+                            <td class="editor__tableCell" dir="ltr" style="width: 428px; padding: 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.lastDestinationStop.location.formattedAddressWithCompanyNameLabel}}</span></p>
+                            </td>
+                          </tr>
+                          {{/if}}
+                          {{#if this.actualPickupDate}}
+                          <tr class="editor__tableRow" dir="ltr">
+                            <td class="editor__tableCell" dir="ltr" style="width: 110px; padding: 0.15rem 1.5rem 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.07rem; white-space: pre-wrap;">Start date</strong></b></p>
+                            </td>
+                            <td class="editor__tableCell" dir="ltr" style="width: 428px; padding: 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.actualPickupDate.shortDateTime}}</span></p>
+                            </td>
+                          </tr>
+                          {{/if}}
+                          {{#if this.actualDeliveryDate}}
+                          <tr class="editor__tableRow" dir="ltr">
+                            <td class="editor__tableCell" dir="ltr" style="width: 110px; padding: 0.15rem 1.5rem 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.07rem; white-space: pre-wrap;">End date</strong></b></p>
+                            </td>
+                            <td class="editor__tableCell" dir="ltr" style="width: 428px; padding: 0.15rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                              <p class="editor__paragraph" dir="ltr"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.actualDeliveryDate.shortDateTime}}</span></p>
+                            </td>
+                          </tr>
+                          {{/if}}
+                        </tbody>
+                      </table>
+                    </td>
+                    <td class="editor__tableCell" dir="ltr" style="width: 169px; padding: 1rem 1rem 1rem 0.75rem; vertical-align: top; text-align: end; background-color: rgb(242, 243, 245); border-color: rgb(222, 227, 237) rgb(222, 227, 237) rgb(222, 227, 237) transparent; border-top-style: solid; border-top-width: 1pt; border-right-style: solid; border-right-width: 1pt; border-bottom-style: solid; border-bottom-width: 1pt;">
+                      <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text" style="font-size: 1rem; color: rgb(108, 117, 125); white-space: pre-wrap;">Total Amt</span></p>
+                      <p class="editor__paragraph" dir="ltr" style="text-align: right;"><b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{this.totalEarnings.withDecimalsAndCurrencyCode}}</strong></b></p>
+                    </td>
+                  </tr>
+                  {{#if this.lineItems}}
+                  <tr class="editor__tableRow" dir="ltr">
+                    <td colspan="2" class="editor__tableCell" dir="ltr" style="width: 739px; padding: 0; vertical-align: top; text-align: start; border-color: rgb(222, 227, 237) rgb(222, 227, 237) rgb(222, 227, 237) rgb(222, 227, 237); border-style: solid; border-width: 1pt;">
+                      <table class="editor__table" dir="ltr" style="border-collapse: separate; border-spacing: 0;">
+                        <colgroup><col><col><col><col><col></colgroup>
+                        <tbody>
+                          <tr class="editor__tableRow" dir="ltr">
+                            <th class="editor__tableCell editor__tableCellHeader" dir="ltr" style="width: 90px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: start; background-color: rgb(242, 243, 245); border-color: transparent transparent rgb(189, 198, 217) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                              <p class="editor__paragraph" dir="ltr"><span class="editor__text" style="font-size: 0.9rem; color: rgb(95, 99, 104); font-weight: 400; white-space: pre-wrap;">Type</span></p>
+                            </th>
+                            <th class="editor__tableCell editor__tableCellHeader" dir="ltr" style="width: 322px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: start; background-color: rgb(242, 243, 245); border-color: transparent transparent rgb(189, 198, 217) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                              <p class="editor__paragraph" dir="ltr"><span class="editor__text" style="font-size: 0.9rem; color: rgb(95, 99, 104); font-weight: 400; white-space: pre-wrap;">Description</span></p>
+                            </th>
+                            <th class="editor__tableCell editor__tableCellHeader" dir="ltr" style="width: 100px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: end; background-color: rgb(242, 243, 245); border-color: transparent transparent rgb(189, 198, 217) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                              <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text" style="font-size: 0.9rem; color: rgb(95, 99, 104); font-weight: 400; white-space: pre-wrap;">Quantity</span></p>
+                            </th>
+                            <th class="editor__tableCell editor__tableCellHeader" dir="ltr" style="width: 100px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: end; background-color: rgb(242, 243, 245); border-color: transparent transparent rgb(189, 198, 217) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                              <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text" style="font-size: 0.9rem; color: rgb(95, 99, 104); font-weight: 400; white-space: pre-wrap;">Rate</span></p>
+                            </th>
+                            <th class="editor__tableCell editor__tableCellHeader" dir="ltr" style="width: 127px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: end; background-color: rgb(242, 243, 245); border-color: transparent transparent rgb(189, 198, 217) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                              <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text" style="font-size: 0.9rem; color: rgb(95, 99, 104); font-weight: 400; white-space: pre-wrap;">Amount</span></p>
+                            </th>
+                          </tr>
+                          {{#each this.lineItems}}
+                          <tr class="editor__tableRow" dir="ltr">
+                            <td class="editor__tableCell" dir="ltr" style="width: 90px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: start; border-color: transparent transparent rgb(222, 227, 237) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                              <p class="editor__paragraph" dir="ltr"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.type}}</span></p>
+                            </td>
+                            <td class="editor__tableCell" dir="ltr" style="width: 322px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: start; border-color: transparent transparent rgb(222, 227, 237) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                              <p class="editor__paragraph" dir="ltr"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.description}}</span></p>
+                            </td>
+                            <td class="editor__tableCell" dir="ltr" style="width: 100px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: end; border-color: transparent transparent rgb(222, 227, 237) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                              <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.quantity}}</span></p>
+                            </td>
+                            <td class="editor__tableCell" dir="ltr" style="width: 100px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: end; border-color: transparent transparent rgb(222, 227, 237) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                              <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.rate.withDecimalsAndCurrencyCode}}</span></p>
+                            </td>
+                            <td class="editor__tableCell" dir="ltr" style="width: 127px; padding: 0.5rem 0.75rem; vertical-align: top; text-align: end; border-color: transparent transparent rgb(222, 227, 237) transparent; border-bottom-style: solid; border-bottom-width: 1pt;">
+                              <p class="editor__paragraph" dir="ltr" style="text-align: right;"><b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{this.subTotal.withDecimalsAndCurrencyCode}}</strong></b></p>
+                            </td>
+                          </tr>
+                          {{/each}}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                  {{/if}}
+                </tbody>
+              </table>
+            </td>
+          </tr>
+        {{/each}}
+      {{/if}}
+
+    </tbody>
+  </table>
+
+  <!-- ============ FOOTER — attached grey card (notes 200 + totals 491 = 691 inside 24px pad) ============ -->
+  <table class="editor__table" dir="ltr" style="border-collapse: separate; border-spacing: 0;">
+    <colgroup><col></colgroup>
+    <tbody>
+      <tr class="editor__tableRow" dir="ltr">
+        <td class="editor__tableCell" dir="ltr" style="width: 739px; padding: 1.5rem; vertical-align: top; text-align: start; border-color: rgb(222, 227, 237); border-style: solid; border-width: 1pt;">
+          <table class="editor__table" dir="ltr" style="border-collapse: separate; border-spacing: 0;">
+            <colgroup><col><col><col></colgroup>
+            <tbody>
+              <tr class="editor__tableRow" dir="ltr">
+                <td class="editor__tableCell" dir="ltr" style="width: 280px; padding: 0 1rem 0 0; vertical-align: top; text-align: start; border-color: transparent;">
+                  <p class="editor__paragraph" dir="ltr"><b><strong class="editor__text editor__text_bold" style="font-size: 1.07rem; white-space: pre-wrap;">Pay notes</strong></b></p>
+                  {{#if record.notes}}
+                    <p class="editor__paragraph" dir="ltr"><span class="editor__text editor__field" style="font-size: 1.07rem; white-space: pre-wrap;">{{record.notes}}</span></p>
+                  {{/if}}
+                </td>
+                <td class="editor__tableCell" dir="ltr" style="width: 190px; padding: 0.25rem 0.75rem 0.25rem 0; vertical-align: top; text-align: start; border-color: transparent;">
+                  <p class="editor__paragraph" dir="ltr" style="text-align: left;"><b><strong class="editor__text editor__text_bold" style="font-size: 1.2rem; white-space: pre-wrap;">Subtotal</strong></b></p>
+                  <p class="editor__paragraph" dir="ltr" style="text-align: left; padding: 0.5rem 0; border-bottom: 1pt solid rgb(222, 227, 237);"><span class="editor__text" style="font-size: 1.2rem; white-space: pre-wrap;">Other pay and deductions</span></p>
+                  <p class="editor__paragraph" dir="ltr" style="text-align: left; padding-top: 0.75rem;"><b><strong class="editor__text editor__text_bold" style="font-size: 1.2rem; white-space: pre-wrap;">Total pay</strong></b></p>
+                </td>
+                <td class="editor__tableCell" dir="ltr" style="width: 221px; padding: 0.25rem 0 0.25rem 0; vertical-align: top; text-align: end; border-color: transparent;">
+                  <p class="editor__paragraph" dir="ltr" style="text-align: right;"><span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{record.subTotal.withCurrencyCode}}</span></p>
+                  <p class="editor__paragraph" dir="ltr" style="text-align: right; padding: 0.5rem 0; border-bottom: 1pt solid rgb(222, 227, 237);"><span class="editor__text editor__field" style="font-size: 1.2rem; white-space: pre-wrap;">{{record.otherPayAndDeductions.withCurrencyCode}}</span></p>
+                  <p class="editor__paragraph" dir="ltr" style="text-align: right; padding-top: 0.75rem;"><b><strong class="editor__text editor__text_bold editor__field" style="font-size: 1.6rem; white-space: pre-wrap;">{{record.total.withCurrencyCode}}</strong></b></p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+</div>

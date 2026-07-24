@@ -1,0 +1,194 @@
+{
+  "_note": "[SYNTHESIZED] Realistic `{org, record, document}` context that Handlebars receives for invoice-Invoice.handlebars. Derived by hand from the template's {{...}} tokens + the applyRecordValue formatting rules + the documentContext.test.ts ground-truth outputs. Leaf VALUES are illustrative; leaf SHAPES/KEYS are exactly what the resolver produces. Note the org.orgAddress uses `postal` (so {{org.orgAddress.postalCode}} in the template resolves to nothing).",
+  "org": {
+    "orgId": "org_9f2a",
+    "logoUrl": "https://files.roserocket.com/org_9f2a/logo.png",
+    "orgPhone": "+1 (416) 555-0142",
+    "orgEmail": "billing@northwindfreight.com",
+    "orgAddress": {
+      "companyName": "Northwind Freight Systems Inc.",
+      "address1": "4200 Industrial Pkwy",
+      "address2": "Suite 300",
+      "postal": "L4W 5M8",
+      "city": "Mississauga",
+      "state": "ON",
+      "country": "CA"
+    },
+    "remitToAddress": {
+      "companyName": "Northwind Freight Systems Inc. — Remittance",
+      "address1": "PO Box 88210",
+      "address2": "",
+      "postal": "60693",
+      "city": "Chicago",
+      "state": "IL",
+      "country": "US"
+    },
+    "terms": "<p>Standard bill-of-lading terms apply.</p>",
+    "documentTerms": {
+      "invoice_regular": {
+        "created_at": "Jan 3, 2026",
+        "updated_at": "Jun 30, 2026",
+        "terms_conditions": "<p>Payment due within terms noted above. Interest of 1.5%/month on overdue balances. Remit via ACH or cheque to the remittance address.</p>"
+      }
+    }
+  },
+  "record": {
+    "fullId": "INVOICE-100482",
+    "orderRefNumbers": "REF-55021, REF-55022",
+    "orderPoNumbers": "PO-9910, PO-9911",
+    "orderLoadTenderNumbers": "LT-33018",
+    "notes": "Consolidated invoice for July haul cycle. Detention billed separately.",
+    "terms": "Net 30",
+    "hasTax": true,
+    "invoiceDate": { "dateTimeInLocation": { "shortDate": "Jul 1, 2026" } },
+    "dueDate": { "dateTimeInLocation": { "shortDate": "Jul 31, 2026" } },
+    "paymentTerm": { "name": "NET30" },
+    "invoiceToAddress": {
+      "companyName": "Acme Manufacturing LLC",
+      "address1": "18 Foundry Rd",
+      "address2": "Dock 4",
+      "city": "Detroit",
+      "state": "MI",
+      "postalCode": "48201",
+      "country": "US"
+    },
+    "remitToAddress": {
+      "companyName": "Northwind Freight Systems Inc. — Remittance",
+      "address1": "PO Box 88210",
+      "address2": "",
+      "city": "Chicago",
+      "state": "IL",
+      "postalCode": "60693",
+      "country": "US"
+    },
+    "ordersDocBuilder": [
+      {
+        "fullId": "ORDER-77310",
+        "poNum": "PO-9910",
+        "loadTenderNum": "LT-33018",
+        "refNum": "REF-55021",
+        "totalAmount": { "withDecimalsAndCurrencyCode": "$3,150.00 USD" },
+        "origins": [
+          {
+            "stopHeaderDocBuilder": "Pickup 1 — Jul 2, 2026 @ 08:00",
+            "location": {
+              "companyName": "Acme Plant 2",
+              "address1": "900 Assembly Dr",
+              "address2": "",
+              "city": "Toledo",
+              "state": "OH",
+              "postalCode": "43604"
+            },
+            "formattedBaseCommodityFieldsDocBuilder": "Palletized auto parts — Class 70 — 12 pallets",
+            "uniqueCommoditiesTotalWeight": "18,400"
+          }
+        ],
+        "destinations": [
+          {
+            "stopHeaderDocBuilder": "Delivery 1 — Jul 3, 2026 @ 14:00",
+            "location": {
+              "companyName": "Acme Manufacturing LLC",
+              "address1": "18 Foundry Rd",
+              "address2": "Dock 4",
+              "city": "Detroit",
+              "state": "MI",
+              "postalCode": "48201"
+            },
+            "formattedBaseCommodityFieldsDocBuilder": "Palletized auto parts — Class 70 — 12 pallets",
+            "uniqueCommoditiesTotalWeight": "18,400"
+          }
+        ]
+      },
+      {
+        "fullId": "ORDER-77311",
+        "poNum": "PO-9911",
+        "loadTenderNum": "",
+        "refNum": "REF-55022",
+        "totalAmount": { "withDecimalsAndCurrencyCode": "$1,200.00 USD" },
+        "origins": [
+          {
+            "stopHeaderDocBuilder": "Pickup 1 — Jul 5, 2026 @ 09:30",
+            "location": {
+              "companyName": "Great Lakes Steel",
+              "address1": "1 Millworks Rd",
+              "address2": "",
+              "city": "Gary",
+              "state": "IN",
+              "postalCode": "46402"
+            },
+            "formattedBaseCommodityFieldsDocBuilder": "Steel coils — Class 60 — 4 coils",
+            "uniqueCommoditiesTotalWeight": "22,000"
+          }
+        ],
+        "destinations": [
+          {
+            "stopHeaderDocBuilder": "Delivery 1 — Jul 6, 2026 @ 11:00",
+            "location": {
+              "companyName": "Acme Manufacturing LLC",
+              "address1": "18 Foundry Rd",
+              "address2": "Dock 1",
+              "city": "Detroit",
+              "state": "MI",
+              "postalCode": "48201"
+            },
+            "formattedBaseCommodityFieldsDocBuilder": "Steel coils — Class 60 — 4 coils",
+            "uniqueCommoditiesTotalWeight": "22,000"
+          }
+        ]
+      }
+    ],
+    "orderLineItems": [
+      {
+        "order": { "fullId": "ORDER-77310" },
+        "type": "Line haul",
+        "description": "Toledo, OH → Detroit, MI (FTL, dry van)",
+        "quantity": "1",
+        "rate": { "unroundedWithoutCurrencyCode": "$2,950" },
+        "taxRate": { "name": "MI State", "effectiveTaxRate": "6" },
+        "subTotal": "$2,950.00"
+      },
+      {
+        "order": { "fullId": "ORDER-77310" },
+        "type": "Fuel surcharge",
+        "description": "FSC @ 6.8%",
+        "quantity": "1",
+        "rate": { "unroundedWithoutCurrencyCode": "$200" },
+        "taxRate": { "name": "MI State", "effectiveTaxRate": "6" },
+        "subTotal": "$200.00"
+      },
+      {
+        "order": { "fullId": "ORDER-77311" },
+        "type": "Line haul",
+        "description": "Gary, IN → Detroit, MI (FTL, flatbed)",
+        "quantity": "1",
+        "rate": { "unroundedWithoutCurrencyCode": "$1,200" },
+        "taxRate": { "name": "MI State", "effectiveTaxRate": "6" },
+        "subTotal": "$1,200.00"
+      }
+    ],
+    "miscLineItems": [
+      {
+        "type": "Detention",
+        "description": "2.5 hrs @ $60/hr — Detroit delivery",
+        "quantity": "2.5",
+        "rate": { "unroundedWithoutCurrencyCode": "$60" },
+        "taxRate": { "name": "MI State", "effectiveTaxRate": "6" },
+        "subTotal": "$150.00"
+      }
+    ],
+    "miscLineItemsSubTotal": { "withDecimalsAndCurrencyCode": "$150.00 USD" },
+    "subTotal": { "withDecimalsAndCurrencyCode": "$4,500.00 USD" },
+    "formattedTaxComponentsSummary": "MI State: $270.00",
+    "total": { "withDecimalsAndCurrencyCode": "$4,770.00 USD" }
+  },
+  "document": {
+    "currentDate": {
+      "standardDate": "2026-07-24",
+      "standardDateTime": "2026-07-24 00:16",
+      "shortDate": "Jul 24, 2026",
+      "shortDateTime": "Jul 24, 2026 @ 00:16",
+      "longDate": "July 24th, 2026",
+      "longDateTime": "July 24th, 2026 @ 00:16"
+    }
+  }
+}

@@ -1,0 +1,74 @@
+---
+title: Layers & the Inspector
+description: How to organize everything on your page and change the properties of what you select.
+---
+
+Two panels help you manage your document precisely: the **Layers** panel (organize) and the **Inspector** (adjust). They work together.
+
+## The Layers panel
+
+The **Layers** panel is a list of **everything on the current page**. Think of it as a table of contents for your design.
+
+> **📷 Screenshot needed —** _The Layers panel listing the elements on the page, with one selected._
+
+What you can do here:
+
+- **Select** — click an item in the list to select it on the canvas (and vice-versa). This is the easiest way to grab something that's hidden behind another element.
+- **Reorder** — change stacking order (which element is in front).
+- **Add layer** — create a new layer using the **Add layer** button.
+- **Group / ungroup** — combine elements so they move together.
+
+Layers are named after what they are (like "Invoice Header Band" or "Bill To Label"). If you ever see an unhelpful code instead of a name — which can happen with templates built from raw data outside the Studio — just click the item to see what it highlights on the canvas.
+
+### Fixed vs. flow layers
+
+Templara pages have two kinds of layers, and it helps to know the difference:
+
+- **Fixed layer** — things pinned to an exact spot on the page (a logo in the corner, a page header). They stay put.
+- **Flow layer** — content that stacks and can push down or across pages as data grows (like a long list of line items).
+
+Most decorative and header items live in the fixed layer; long, data-driven content lives in the flow layer.
+
+## The Inspector (right panel)
+
+The **Inspector** on the right shows the settings for **whatever you've selected**. It changes based on your selection — that's the whole point.
+
+> **📷 Screenshot needed —** _The inspector showing properties for a selected text element._
+
+### When nothing is selected → Page settings
+You'll see settings for the **page itself**:
+
+- **Size** (e.g. Letter)
+- **Margins** (the safe area inside the edges)
+- **Guides** and other overlay toggles
+
+### When a text box is selected → Text settings
+Typical controls include:
+
+- **Content / binding** — the words, or the data field it's connected to
+- **Font, size, weight, color**
+- **Alignment**
+- **Position and dimensions**
+
+### When a table or repeat is selected → Data + structure settings
+Controls for rows, columns, and which list the section is bound to.
+
+### The rule to remember
+
+> **Click the thing you want to change, then use the right panel to change it.** If the right panel isn't showing what you expect, check what's selected (or click empty space to see page settings).
+
+## Working together
+
+A common workflow:
+
+1. Use **Layers** to find and select the exact element (especially when things overlap).
+2. Use the **Inspector** to adjust it precisely.
+3. Use the **canvas** to drag it into place.
+
+## What's next
+
+<Cards>
+  <Card title="Canvas & pages" href="/docs/user-guide/canvas-and-pages" />
+  <Card title="Connecting data" href="/docs/user-guide/binding-data" />
+  <Card title="Keyboard shortcuts" href="/docs/user-guide/keyboard-shortcuts" />
+</Cards>

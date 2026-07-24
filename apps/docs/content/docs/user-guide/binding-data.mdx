@@ -1,0 +1,84 @@
+---
+title: Connecting Data (Bindings)
+description: How to make your document fill itself in from data — the most important skill in Templara.
+---
+
+This is the heart of Templara. "Connecting data" (also called **binding**) is how a box on your page turns into a real value — how a text box becomes the actual customer's name.
+
+## The idea in plain words
+
+Your document has **spots** (a text box, a table cell, a barcode). Your **data** has **values** (a name, a total, a date). **Binding** is drawing a line between a spot and a value:
+
+```txt
+This text box  ⟶  customer.name
+This total     ⟶  invoice.total
+This barcode   ⟶  shipment.trackingNumber
+```
+
+Once bound, the spot shows a **placeholder** in the editor (like `{{customer.name}}`) and the **real value** in the preview.
+
+## What is "sample data"?
+
+To design confidently, you need example values to look at. That's **sample data** — a set of realistic example values stored with your project. Starter templates come with sample data already filled in, which is why their previews look real immediately.
+
+Sample data is only for **designing and previewing**. When Templara is embedded in a real product, that product supplies the real records at output time.
+
+## The Data panel
+
+The **Data panel** is where you work with data. It has:
+
+- A **search box** — type to find a field by name (essential when there are many fields).
+- **Edit sample data JSON** — opens the raw sample data so you can view or change the example values.
+- **Infer schema** — looks at your sample data and figures out the list of available fields automatically.
+
+> **📷 Screenshot needed —** _The Data panel with the search box, field list, and the Edit sample data / Infer schema buttons._
+
+### If the field list looks huge
+
+Some real datasets have **thousands** of fields. That can feel overwhelming. Use the **search box** to jump straight to what you need (type "total", "name", "address", etc.) instead of scrolling. Improving how large datasets are browsed is on our active roadmap.
+
+## How to bind a field (step by step)
+
+1. Select the element you want to fill (for example, a text box).
+2. Open the **Data panel** and **search** for the field you want (e.g. `customer.name`).
+3. Connect it to the selected element. The element now shows the placeholder `{{customer.name}}`.
+4. Open **Preview** to confirm the real value appears.
+
+> **📷 Screenshot needed —** _Binding a data field to a selected text box, then the preview showing the real value._
+
+You can also check or change a binding in the **right inspector** when an element is selected.
+
+## Lists and tables: the Repeat
+
+When you have a **list** (many invoice line items, many packages), you don't create a box for each one. Instead:
+
+1. Add a **Repeat (E)** section (or a **Table** with bound columns).
+2. Bind it to the list in your data (e.g. `invoice.items`).
+3. Inside, design **one** example row and bind its cells to the item's fields (like `item.name`, `item.price`).
+
+In the editor you see **one** row. In the preview, Templara repeats it for **every** item and splits across pages as needed.
+
+## Show-or-hide: the Condition
+
+To show something only sometimes, use a **Condition (C)**. Bind it to a rule (for example, "amount due is greater than zero"). When the rule is true, the section shows; when false, it disappears in the preview.
+
+## A note about formatting (money and dates)
+
+Values like money and dates are often already **formatted** in the data (for example the total may already read `"4,590.00 USD"` and a date may already read `"Jul 1, 2026"`). In those cases you bind directly to the ready-made value and don't reformat it yourself. If a value looks like raw code or an object instead of a clean value, you likely need a different, more specific field — use search to find the "formatted" version.
+
+## Troubleshooting
+
+| You see... | Likely cause | Fix |
+| --- | --- | --- |
+| A placeholder like `{{x}}` in the **preview** | The field doesn't exist in the data | Check the field name in the Data panel; bind to a real field |
+| `[object Object]` or raw-looking text | You bound to a container, not a final value | Pick the more specific sub-field (e.g. the formatted one) |
+| A row/list not repeating | The Repeat isn't bound to a list | Bind the Repeat to an array field (e.g. `invoice.items`) |
+| Empty gaps where optional info is missing | The field is blank for this record | Wrap it in a **Condition** so it hides when empty |
+
+## What's next
+
+<Cards>
+  <Card title="Preview & export" href="/docs/user-guide/preview-and-export" />
+  <Card title="Diagnostics" href="/docs/user-guide/diagnostics" />
+  <Card title="Adding elements" href="/docs/user-guide/adding-elements" />
+</Cards>
