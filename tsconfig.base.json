@@ -19,6 +19,7 @@
       "@templara/editor": ["packages/editor/src/index.ts"],
       "@templara/pdf": ["packages/pdf/src/index.ts"],
       "@templara/react-renderer": ["packages/react-renderer/src/index.ts"],
+      "@templara/react-renderer/ssr": ["packages/react-renderer/src/ssr.ts"],
       "@templara/renderer": ["packages/renderer/src/index.ts"],
       "@templara/templates": ["packages/templates/src/index.ts"]
     },

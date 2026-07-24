@@ -120,9 +120,18 @@ importers:
       '@templara/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@templara/react-renderer':
+        specifier: workspace:*
+        version: link:../../packages/react-renderer
       '@templara/templates':
         specifier: workspace:*
         version: link:../../packages/templates
+      react:
+        specifier: ^19.0.0
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.7(react@19.2.7)
 
   apps/playground:
     dependencies:
@@ -215,15 +224,22 @@ importers:
 
   packages/react-renderer:
     dependencies:
+      '@templara/core':
+        specifier: workspace:*
+        version: link:../core
       '@templara/renderer':
         specifier: workspace:*
         version: link:../renderer
       bwip-js:
         specifier: ^4.11.1
         version: 4.11.1
+    devDependencies:
       react:
         specifier: ^19.0.0
         version: 19.2.7
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.7(react@19.2.7)
 
   packages/renderer:
     dependencies:
