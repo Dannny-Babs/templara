@@ -273,6 +273,81 @@ export function buildEditorPageModel(
   };
 }
 
+/**
+ * Human-readable layer / inspector title for a node.
+ * Prefers authored `name`, then content/type-aware fallbacks, then
+ * `Type · shortId` — never a raw UUID as the primary label.
+ */
+export function friendlyLayerLabel(node: EditableNode): string {
+  const authored = typeof node.name === "string" ? node.name.trim() : "";
+  if (authored) {
+    return authored;
+  }
+
+  if (node.type === "text") {
+    const content = truncateLabel(resolveInlineContent(node.content));
+    if (content) {
+      return content;
+    }
+    return typedShortLabel("Text", node.id);
+  }
+
+  if (node.type === "grid") {
+    return gridLabel(node);
+  }
+
+  if (node.type === "section") {
+    return sectionLabel(node);
+  }
+
+  if (node.type === "stack") {
+    return stackLabel(node);
+  }
+
+  if (node.type === "repeat") {
+    const pathTail = node.binding.path.split(".").at(-1);
+    if (pathTail) {
+      return `Repeat · ${pathTail}`;
+    }
+    return typedShortLabel("Repeat", node.id);
+  }
+
+  if (node.type === "image") {
+    const alt = node.alt?.trim();
+    if (alt) {
+      return alt;
+    }
+    return typedShortLabel("Image", node.id);
+  }
+
+  if (node.type === "barcode") {
+    return typedShortLabel("Barcode", node.id);
+  }
+
+  if (node.type === "qr") {
+    return typedShortLabel("QR", node.id);
+  }
+
+  if (node.type === "shape") {
+    return typedShortLabel(titleCaseType(node.shape), node.id);
+  }
+
+  if (node.type === "group") {
+    return typedShortLabel("Group", node.id);
+  }
+
+  if (node.type === "flowRegion") {
+    return typedShortLabel("Flow", node.id);
+  }
+
+  if (node.type === "conditional") {
+    return typedShortLabel("Condition", node.id);
+  }
+
+  // Future node types stay readable instead of falling back to raw ids.
+  return typedShortLabel("Layer", (node as EditableNode).id);
+}
+
 export function collectPageNodeItems(
   template: DocumentTemplate,
   pageId?: string,
@@ -1301,7 +1376,7 @@ function createLeafNode(
     id: `${context.layerId}.${node.id}`,
     sourceNodeId: node.id,
     nodeType: node.type,
-    label: node.name ?? humanizeId(node.id),
+    label: friendlyLayerLabel(node),
     frame: absoluteFrame,
     localFrame: node.frame,
     layerId: context.layerId,
@@ -1409,7 +1484,7 @@ function collectNodes(
     const current: EditorNodeItem = {
       id: node.id,
       type: node.type,
-      label: node.name ?? humanizeId(node.id),
+      label: friendlyLayerLabel(node),
       depth: context.depth,
       pageId: context.pageId,
       layerId: context.layerId,
@@ -2130,6 +2205,53 @@ function getBounds(frames: Frame[]): Frame {
 
 function humanizeId(id: string): string {
   return id
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function typedShortLabel(typeLabel: string, id: string): string {
+  const short = shortNodeId(id);
+  return short ? `${typeLabel} · ${short}` : typeLabel;
+}
+
+/** Prefer a compact id fragment for UUID-ish keys; drop noise from short slugs. */
+function shortNodeId(id: string): string | undefined {
+  const trimmed = id.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const uuidLike =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      trimmed,
+    ) || /^[0-9a-f]{16,}$/i.test(trimmed);
+
+  if (uuidLike) {
+    return trimmed.slice(0, 8);
+  }
+
+  // Already human-ish ids (title, page-two-title) stay readable via type label alone.
+  if (/^[a-z][a-z0-9_-]{0,24}$/i.test(trimmed) && !/^\d+$/.test(trimmed)) {
+    return undefined;
+  }
+
+  return trimmed.length > 10 ? trimmed.slice(0, 8) : trimmed;
+}
+
+function truncateLabel(value: string, max = 40): string {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  if (!collapsed) {
+    return "";
+  }
+  if (collapsed.length <= max) {
+    return collapsed;
+  }
+  return `${collapsed.slice(0, max - 1).trimEnd()}…`;
+}
+
+function titleCaseType(value: string): string {
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

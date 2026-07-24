@@ -14,6 +14,7 @@ import {
   buildEditorPageModel,
   collectPageNodeItems,
   findEditableNode,
+  friendlyLayerLabel,
   getAlignmentFramePatches,
   getResizeFramePatch,
   groupNodesInTemplate,
@@ -1009,6 +1010,80 @@ describe("moveNodeInTemplate", () => {
     // Table body content starts after the 24px header row. The moved node was
     // at absolute (0,0), so it rebases into the body cell at (-100,-124).
     expect(moved?.frame).toMatchObject({ x: -100, y: -124 });
+  });
+});
+
+describe("friendlyLayerLabel", () => {
+  it("prefers authored names over ids", () => {
+    const node: TextNode = {
+      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      type: "text",
+      name: "Invoice total",
+      frame: { x: 0, y: 0, width: 100, height: 20 },
+      content: [{ kind: "text", text: "ignored when named" }],
+      style: { fontFamily: "Inter", fontSize: 12, lineHeight: 1.2 },
+    };
+
+    expect(friendlyLayerLabel(node)).toBe("Invoice total");
+  });
+
+  it("uses text content instead of raw UUIDs", () => {
+    const node: TextNode = {
+      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      type: "text",
+      frame: { x: 0, y: 0, width: 100, height: 20 },
+      content: [{ kind: "text", text: "Bill to" }],
+      style: { fontFamily: "Inter", fontSize: 12, lineHeight: 1.2 },
+    };
+
+    expect(friendlyLayerLabel(node)).toBe("Bill to");
+  });
+
+  it("falls back to type + short id for UUID-only nodes", () => {
+    const node: ShapeNode = {
+      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      type: "shape",
+      shape: "rectangle",
+      frame: { x: 0, y: 0, width: 40, height: 40 },
+      style: { fill: "#fff" },
+    };
+
+    expect(friendlyLayerLabel(node)).toBe("Rectangle · a1b2c3d4");
+  });
+
+  it("surfaces content-aware labels through collectPageNodeItems", () => {
+    const uuid = "11111111-2222-3333-4444-555555555555";
+    const template: DocumentTemplate = {
+      id: "layer-labels",
+      version: "0.0.1",
+      unit: "px",
+      pages: [
+        {
+          id: "page-1",
+          name: "Cover",
+          size: PAGE_PRESETS.letter,
+          layers: [
+            {
+              id: "fixed",
+              kind: "fixed",
+              nodes: [
+                {
+                  id: uuid,
+                  type: "text",
+                  frame: { x: 0, y: 0, width: 120, height: 20 },
+                  content: [{ kind: "text", text: "Customer name" }],
+                  style: { fontFamily: "Inter", fontSize: 12, lineHeight: 1.2 },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const items = collectPageNodeItems(template, "page-1");
+    expect(items.find((item) => item.id === uuid)?.label).toBe("Customer name");
+    expect(items.every((item) => !item.label.includes(uuid))).toBe(true);
   });
 });
 

@@ -46,9 +46,9 @@ export function TemplateStudio() {
 ## Public Props
 
 - `value`: controlled `DocumentTemplate`.
-- `data`: sample JSON used by preview and data binding tools.
+- `data`: sample or **real-record** JSON used by preview and data binding tools. For live preview, pass a host-resolved `{ org, record, … }` context (see `preparePreviewData`).
 - `onChange`: template update callback.
-- `onDataChange`: sample data update callback.
+- `onDataChange`: data update callback.
 - `documentTitle`: optional title for the top toolbar.
 - `documentStatus`: `"draft"`, `"dirty"`, or `"saved"`.
 - `onSave`: host-owned save callback.
@@ -59,6 +59,26 @@ export function TemplateStudio() {
 - `hideBrand`: when true, omit the default Templara wordmark (standalone Studio stays branded unless this or `embedded` is set). Hosts may still pass `brandLogo` / `brandLogoSrc`.
 - `hostDesignTokens`: optional chrome tokens (fonts, colors, radii, shadows). Applied as `--templara-*` CSS variables on the editor shell with Templara fallbacks. Prefer cascading host `:root` CSS vars when available; pass this prop for iframe/shadow-DOM or explicit overrides.
 - `toolbarAccessory`: optional host control beside the document title.
+
+## Real-record preview
+
+`DocumentEditor` does not fetch platform records. Hosts resolve context, then hydrate the controlled `data` prop:
+
+```tsx
+import { DocumentEditor, preparePreviewData } from "@templara/editor";
+
+const previewData = preparePreviewData(hostResolvedContext); // aliases org postal ↔ postalCode
+
+<DocumentEditor
+  value={template}
+  data={previewData}
+  onDataChange={setPreviewData}
+  embedded
+  hideBrand
+/>
+```
+
+The page inspector “Sample Data Source” label is Studio chrome only — it does not load remote records.
 
 ## Defaults (embed-friendly)
 

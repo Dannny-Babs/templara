@@ -57,6 +57,8 @@ export interface BuildDataExplorerOptions {
   data?: Record<string, unknown>;
   nodeItems?: EditorNodeItem[];
   selectedNodeIds?: string[];
+  /** Hide `$…` system fields and `_note` markers. Defaults to `true`. */
+  hideSystemFields?: boolean;
 }
 
 const TEXT_NODE_STYLE: TextNode["style"] = {
@@ -67,21 +69,134 @@ const TEXT_NODE_STYLE: TextNode["style"] = {
   color: "#111827"
 };
 
+/** True when any path segment is a `$system` key or the reserved `_note` marker. */
+export function isSystemDataPath(path: string): boolean {
+  return path.split(".").some((segment) => segment.startsWith("$") || segment === "_note");
+}
+
+/**
+ * Filter explorer groups by a case-insensitive query across label/path/kind.
+ * Matching descendants keep their ancestor chain so the tree stays navigable.
+ */
+export function filterDataExplorerGroups(
+  groups: DataExplorerGroup[],
+  query: string,
+): DataExplorerGroup[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return groups;
+  }
+
+  return groups
+    .map((group) => ({
+      ...group,
+      fields: filterDataExplorerFields(group.fields, normalized),
+    }))
+    .filter((group) => group.fields.length > 0);
+}
+
+export function filterDataExplorerFields(
+  fields: DataExplorerField[],
+  normalizedQuery: string,
+): DataExplorerField[] {
+  if (!normalizedQuery) {
+    return fields;
+  }
+
+  const matched = new Set<string>();
+
+  for (const field of fields) {
+    const haystack =
+      `${field.label} ${field.path} ${field.displayPath ?? ""} ${field.kind}`.toLowerCase();
+    if (haystack.includes(normalizedQuery)) {
+      matched.add(field.path);
+      let parentPath = field.parentPath;
+      while (parentPath) {
+        matched.add(parentPath);
+        const parent = fields.find((candidate) => candidate.path === parentPath);
+        parentPath = parent?.parentPath;
+      }
+    }
+  }
+
+  return fields.filter((field) => matched.has(field.path));
+}
+
+/**
+ * Convert a nested field→label map (like `docs/fixtures/order-schema-sample.json`)
+ * into `DataField[]` suitable for `template.dataSchema.fields`.
+ */
+export function dataFieldsFromLabelMap(
+  map: Record<string, unknown>,
+): DataField[] {
+  const fields: DataField[] = [];
+
+  for (const [key, value] of Object.entries(map)) {
+    if (key === "_note") {
+      continue;
+    }
+
+    if (isRecord(value)) {
+      const children = dataFieldsFromLabelMap(value);
+      fields.push({
+        path: key,
+        label: titleCase(key),
+        kind: "object",
+        children: children.length > 0 ? children : undefined,
+      });
+    } else if (typeof value === "string") {
+      fields.push({
+        path: key,
+        label: value,
+        kind: "string",
+      });
+    }
+  }
+
+  return fields;
+}
+
+/**
+ * Build default collapsed-state keys for large trees: collapse every parent so
+ * authors start at top-level groups and expand intentionally.
+ */
+export function defaultCollapsedDataFieldKeys(
+  groups: DataExplorerGroup[],
+  fieldCountThreshold = 80,
+): Record<string, boolean> {
+  const total = groups.reduce((sum, group) => sum + group.fields.length, 0);
+  if (total < fieldCountThreshold) {
+    return {};
+  }
+
+  const collapsed: Record<string, boolean> = {};
+  for (const group of groups) {
+    for (const field of group.fields) {
+      if (field.hasChildren) {
+        collapsed[`${group.id}:${field.path}`] = true;
+      }
+    }
+  }
+  return collapsed;
+}
+
 export function buildDataExplorerModel({
   template,
   data,
   nodeItems = [],
-  selectedNodeIds = []
+  selectedNodeIds = [],
+  hideSystemFields = true,
 }: BuildDataExplorerOptions): DataExplorerModel {
   const selectedScope = resolveSelectedDataScope(nodeItems, selectedNodeIds);
-  const documentFields = decorateFieldHierarchy(
-    mergeExplorerFields(
-      flattenSchemaFields(template.dataSchema?.fields ?? [], "schema"),
-      inferFieldsFromSample(data, "", 0, "sample")
-    )
-  );
+  const mergedDocumentFields = mergeExplorerFields(
+    flattenSchemaFields(template.dataSchema?.fields ?? [], "schema"),
+    inferFieldsFromSample(data, "", 0, "sample"),
+  ).filter((field) => !hideSystemFields || !isSystemDataPath(field.path));
+  const documentFields = decorateFieldHierarchy(mergedDocumentFields);
   const variableFields = decorateFieldHierarchy(fieldsFromVariables(template));
-  const scopeFields = selectedScope ? fieldsForScope(template, data, selectedScope) : [];
+  const scopeFields = (selectedScope ? fieldsForScope(template, data, selectedScope) : []).filter(
+    (field) => !hideSystemFields || !isSystemDataPath(field.path),
+  );
   const groups: DataExplorerGroup[] = [];
 
   if (scopeFields.length > 0 && selectedScope) {

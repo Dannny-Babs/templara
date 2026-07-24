@@ -104,6 +104,8 @@ import {
   applyDataBindingToNode,
   buildDataExplorerModel,
   createBoundTextNode,
+  defaultCollapsedDataFieldKeys,
+  filterDataExplorerGroups,
   isFieldBindableForNode,
 } from "./dataExplorer.js";
 import {
@@ -137,6 +139,11 @@ import {
   shouldShowTemplaraBrand,
 } from "./hostDesignTokens.js";
 import { filterLayerTreeRows } from "./layerTree.js";
+import {
+  anchoredDropdownStyle,
+  measureDropdownFrame,
+  type DropdownFrame,
+} from "./dropdownPosition.js";
 
 export type {
   AlignmentCommand,
@@ -146,6 +153,7 @@ export type {
 export {
   buildEditorPageModel,
   collectPageNodeItems,
+  friendlyLayerLabel,
   getAlignmentFramePatches,
 } from "./editorModel.js";
 export type { HostDesignTokens } from "./hostDesignTokens.js";
@@ -155,6 +163,19 @@ export {
   hostDesignTokensToCssVars,
   shouldShowTemplaraBrand,
 } from "./hostDesignTokens.js";
+export {
+  dataFieldsFromLabelMap,
+  defaultCollapsedDataFieldKeys,
+  filterDataExplorerGroups,
+  isSystemDataPath,
+} from "./dataExplorer.js";
+export {
+  anchoredDropdownStyle,
+  measureDropdownFrame,
+} from "./dropdownPosition.js";
+export type { DropdownFrame, DropdownAlign, DropdownPlacement } from "./dropdownPosition.js";
+export { preparePreviewData } from "./previewData.js";
+export type { PreparePreviewDataOptions } from "./previewData.js";
 
 const DEFAULT_ZOOM = 0.76;
 const GRID_SIZE = 8;
@@ -181,6 +202,11 @@ const UI_SELECTION_BG = "#f8faff";
 
 export interface DocumentEditorProps {
   value: DocumentTemplate;
+  /**
+   * Sample / preview JSON for canvas preview and data binding tools.
+   * Hosts should pass a real record context (optionally via {@link preparePreviewData})
+   * rather than synthesized placeholders when validating bindings against live data.
+   */
   data?: Record<string, unknown>;
   onChange?: (nextValue: DocumentTemplate) => void;
   onDataChange?: (nextData: Record<string, unknown>) => void;
@@ -312,12 +338,6 @@ type LayerDropIntent = "before" | "after" | "inside";
 interface LayerMoveTarget {
   referenceId: string;
   position: LayerDropIntent;
-}
-
-interface DropdownFrame {
-  top: number;
-  left: number;
-  width: number;
 }
 
 const sidebarIcons = {
@@ -2487,7 +2507,14 @@ function ZoomControl({
   const menuWidth = 196;
 
   const updateMenuFrame = useCallback(() => {
-    setMenuFrame(measureDropdownFrame(wrapRef.current, menuWidth, "center"));
+    const anchor = wrapRef.current?.getBoundingClientRect() ?? null;
+    setMenuFrame(
+      measureDropdownFrame(anchor, {
+        width: menuWidth,
+        align: "center",
+        estimatedHeight: 260,
+      }),
+    );
   }, []);
 
   const setPreset = (value: number): void => {
@@ -2636,7 +2663,14 @@ function PreviewDropdown({
   const menuWidth = 248;
 
   const updateMenuFrame = useCallback(() => {
-    setMenuFrame(measureDropdownFrame(wrapRef.current, menuWidth, "right"));
+    const anchor = wrapRef.current?.getBoundingClientRect() ?? null;
+    setMenuFrame(
+      measureDropdownFrame(anchor, {
+        width: menuWidth,
+        align: "right",
+        estimatedHeight: 180,
+      }),
+    );
   }, []);
 
   useEffect(() => {
@@ -4389,8 +4423,13 @@ function pageDisplayName(
   pages: DocumentTemplate["pages"],
   pageId: string,
 ): string {
-  const pageIndex = pages.findIndex((page) => page.id === pageId);
+  const page = pages.find((candidate) => candidate.id === pageId);
+  const authored = page?.name?.trim();
+  if (authored) {
+    return authored;
+  }
 
+  const pageIndex = pages.findIndex((candidate) => candidate.id === pageId);
   return `Page ${pageIndex >= 0 ? pageIndex + 1 : 1}`;
 }
 
@@ -4449,12 +4488,21 @@ function DataSchemaPanel({
   const [sampleError, setSampleError] = useState<string | null>(null);
   const [collapsedFields, setCollapsedFields] = useState<
     Record<string, boolean>
-  >({});
+  >(() => defaultCollapsedDataFieldKeys(model.groups));
+  const [collapseSeed, setCollapseSeed] = useState(() => model.allFields.length);
 
   useEffect(() => {
     setSampleDraft(JSON.stringify(data ?? {}, null, 2));
     setSampleError(null);
   }, [data]);
+
+  useEffect(() => {
+    if (model.allFields.length === collapseSeed) {
+      return;
+    }
+    setCollapsedFields(defaultCollapsedDataFieldKeys(model.groups));
+    setCollapseSeed(model.allFields.length);
+  }, [collapseSeed, model.allFields.length, model.groups]);
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleGroups = filterDataExplorerGroups(
@@ -4778,26 +4826,6 @@ function nextUniqueSchemaPath(fields: DataField[], base: string): string {
   }
 
   return candidate;
-}
-
-function filterDataExplorerGroups(
-  groups: DataExplorerGroup[],
-  query: string,
-): DataExplorerGroup[] {
-  if (!query) {
-    return groups;
-  }
-
-  return groups
-    .map((group) => ({
-      ...group,
-      fields: group.fields.filter((field) =>
-        `${field.label} ${field.path} ${field.displayPath ?? ""} ${field.kind}`
-          .toLowerCase()
-          .includes(query),
-      ),
-    }))
-    .filter((group) => group.fields.length > 0);
 }
 
 function DataExplorerGroupView({
@@ -6478,48 +6506,6 @@ function clampZoom(value: number): number {
   return Math.min(2, Math.max(0.25, Math.round(value * 100) / 100));
 }
 
-function measureDropdownFrame(
-  anchor: HTMLElement | null,
-  width: number,
-  align: "center" | "right",
-): DropdownFrame | null {
-  if (!anchor || typeof window === "undefined") {
-    return null;
-  }
-
-  const rect = anchor.getBoundingClientRect();
-  const viewportMargin = 8;
-  const preferredLeft =
-    align === "center" ? rect.left + rect.width / 2 - width / 2 : rect.right - width;
-  const maxLeft = Math.max(viewportMargin, window.innerWidth - width - viewportMargin);
-
-  return {
-    top: rect.bottom + 8,
-    left: Math.min(maxLeft, Math.max(viewportMargin, preferredLeft)),
-    width,
-  };
-}
-
-function anchoredDropdownStyle(
-  base: CSSProperties,
-  frame: DropdownFrame | null,
-): CSSProperties {
-  if (!frame) {
-    return base;
-  }
-
-  return {
-    ...base,
-    position: "fixed",
-    top: frame.top,
-    right: "auto",
-    left: frame.left,
-    width: frame.width,
-    transform: "none",
-    zIndex: 1000,
-  };
-}
-
 function roundFrameValue(value: number): number {
   return Math.round(value);
 }
@@ -7465,8 +7451,8 @@ const layersHeaderStyle: CSSProperties = {
 };
 
 const layersAddButtonStyle: CSSProperties = {
-  width: 24,
-  height: 24,
+  width: 28,
+  height: 28,
   display: "grid",
   placeItems: "center",
   border: "1px solid transparent",
@@ -7521,9 +7507,9 @@ const layerButtonStyle: CSSProperties = {
 const layerTreeRowStyle: CSSProperties = {
   position: "relative",
   width: "100%",
-  height: 28,
+  height: 32,
   display: "grid",
-  gridTemplateColumns: "14px 18px minmax(0, 1fr)",
+  gridTemplateColumns: "16px 24px minmax(0, 1fr)",
   alignItems: "center",
   gap: 6,
   border: "1px solid transparent",
@@ -7548,8 +7534,8 @@ const layerTreeCaretButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  width: 18,
-  height: 18,
+  width: 24,
+  height: 24,
   borderRadius: 4,
   cursor: "pointer",
   color: "#667085",
