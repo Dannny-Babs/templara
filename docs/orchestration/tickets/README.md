@@ -1,8 +1,8 @@
 # Orchestration tickets — index
 
-**Integration branch:** `integration/rr-doc-builder-2-wave4`  
+**Integration branch:** `integration/rr-doc-builder-2-wave5`  
 **Plan:** [orchestration-plan.md](../../orchestration-plan.md) §6 template / §9–10 streams  
-**Wave:** Wave 4 (E1 host tokens + F1 editor UX). Waves 1–3 merged to `main` (PRs #2–#5).
+**Wave:** Wave 5 (F3–F5, A3 Templara seam; D1/B2/H1 host-owned). Waves 1–3 merged to `main` (PRs #2–#5). Wave 4 on `integration/rr-doc-builder-2-wave4` (E1/F1).
 
 ## Dependency graph
 
@@ -18,12 +18,15 @@ flowchart TD
   B0[B0 SSR spike]
   B1[B1 renderTemplateToHtml]
   G2[G2 SSR golden]
-  A3[A3 real-record preview - backlog]
+  A3[A3 real-record preview seam]
   C3[C3 org postal aliases]
   D1[D1 doc-type registry]
   E1[E1 host tokens]
   F1[F1 editor UX]
-  B2[B2 host POST - backlog]
+  F3[F3 dropdown overflow]
+  F4[F4 layer names]
+  F5[F5 large schema panel]
+  B2[B2 host POST]
 
   G0 --> G1
   G0 --> A1
@@ -39,12 +42,16 @@ flowchart TD
   B1 --> D1
   C2 --> D1
   C2 --> C3
+  C3 --> A3
   B1 --> B2
   H1 --> B2
   E1 -.-> F1
+  F1 --> F3
+  F1 --> F4
+  F1 --> F5
 ```
 
-Rough order: Waves 1–3 done → Wave 4 **E1 + F1** (D1 host-owned) → Wave 5 **D1 host / A3 / B2 / F3–F5**.
+Rough order: Waves 1–4 done (or Wave 4 branch) → Wave 5 **F3/F4/F5/A3 (Templara)** + **D1/B2/H1 (host)**.
 
 ## Status table
 
@@ -64,23 +71,25 @@ Rough order: Waves 1–3 done → Wave 4 **E1 + F1** (D1 host-owned) → Wave 5 
 | [D1](D1-doc-type-registry.md) | Doc-type registry parity (host) | D | A2, B1 | ready | Wave 5 host (ticket/spec only) |
 | [E1](E1-host-design-tokens.md) | Host design-token inheritance | E | — | done | `integration/rr-doc-builder-2-wave4` |
 | [F1](F1-editor-ux-field-test.md) | Editor UX field-test (canvas defaults + brand) | F | — | done | `integration/rr-doc-builder-2-wave4` |
-| [A3](backlog.md#a3) | Real-record preview wiring (host + optional Templara seam) | A | A2 | backlog | Wave 5+ |
-| [B2](backlog.md#b2) | Host POST generate-document integration | B | B1, H1 | backlog | Wave 5+ (host) |
-| [F3](backlog.md#f3) | Dropdown / popover overflow + sizing | F | F1 | backlog | Wave 5+ |
-| [F4](backlog.md#f4) | Human-readable layer names | F | F1 | backlog | Wave 5+ |
-| [F5](backlog.md#f5) | Large schema / data panel search & scale | F | F1 | backlog | Wave 5+ |
+| [A3](A3-real-record-preview.md) | Real-record preview seam (`preparePreviewData`) | A | A2, C3 | done (Templara); host wiring open | `integration/rr-doc-builder-2-wave5` |
+| [B2](B2-host-generate-document.md) | Host POST generate-document integration | B | B1, H1 | backlog | Wave 5+ (host) |
+| [F3](F3-dropdown-overflow.md) | Dropdown / popover overflow + sizing | F | F1 | done | `integration/rr-doc-builder-2-wave5` |
+| [F4](F4-readable-layer-names.md) | Human-readable layer names | F | F1 | done | `integration/rr-doc-builder-2-wave5` |
+| [F5](F5-large-schema-data-panel.md) | Large schema / data panel search & scale | F | F1 | done | `integration/rr-doc-builder-2-wave5` |
 
 **Status values:** `ready` · `in_progress` · `blocked` · `done` · `backlog`
 
-## Wave 4 merge gate
+## Wave 5 merge gate
 
-Before marking Wave 4 complete on `integration/rr-doc-builder-2-wave4`:
+Before marking Wave 5 complete on `integration/rr-doc-builder-2-wave5`:
 
-1. F1: canvas layout aids default off; tests + changeset.
-2. E1: `HostDesignTokens` + CSS var bridge; `embedded` / `hideBrand`; tests + README + changeset.
-3. Tickets README/backlog updated; remaining UX/data work ticketed (not silently closed).
-4. `pnpm typecheck && pnpm test` green for `@templara/editor`.
-5. Do **not** invent platform-model POSTs or host doc-type registry implementations in this repo (D1/B2 stay host-owned).
+1. F3: viewport-aware dropdown placement + tests.
+2. F4: `friendlyLayerLabel` + tests (no UUID primary titles).
+3. F5: hide `$` system fields, ancestor-preserving search, large-schema fixture smoke.
+4. A3: `preparePreviewData` + README (host still wires live records).
+5. D1 / B2 / H1 remain host-owned — tickets/docs only in this repo.
+6. `pnpm typecheck && pnpm test` green for `@templara/editor`.
+7. Changeset for `@templara/editor`.
 
 ## Files in this folder
 
@@ -100,4 +109,9 @@ Before marking Wave 4 complete on `integration/rr-doc-builder-2-wave4`:
 | [D1-doc-type-registry.md](D1-doc-type-registry.md) | Full §6 ticket (host Wave 5; Templara ticket/spec only) |
 | [E1-host-design-tokens.md](E1-host-design-tokens.md) | Full §6 ticket (Wave 4, done) |
 | [F1-editor-ux-field-test.md](F1-editor-ux-field-test.md) | Full §6 ticket (Wave 4, done) |
-| [backlog.md](backlog.md) | Remaining stubs (A3, B2, F2–F6, …) |
+| [A3-real-record-preview.md](A3-real-record-preview.md) | Full §6 ticket (Wave 5 Templara seam done) |
+| [B2-host-generate-document.md](B2-host-generate-document.md) | Full §6 ticket (host-only) |
+| [F3-dropdown-overflow.md](F3-dropdown-overflow.md) | Full §6 ticket (Wave 5, done) |
+| [F4-readable-layer-names.md](F4-readable-layer-names.md) | Full §6 ticket (Wave 5, done) |
+| [F5-large-schema-data-panel.md](F5-large-schema-data-panel.md) | Full §6 ticket (Wave 5, done) |
+| [backlog.md](backlog.md) | Remaining stubs (F2, F6, host follow-ups) |

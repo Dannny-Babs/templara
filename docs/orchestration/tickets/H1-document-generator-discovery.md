@@ -1,6 +1,9 @@
 ### TASK H1 — `document-generator` discovery prompt pack
+**Status:** ready (external — prompt pack in Templara; execution stays in `document-generator`)  
 **Stream:** H — Deep discovery (external)   **Depends on:** none   **Model tier:** planner/mid (run in external repo; no Templara code)  
-**Branch:** n/a — commit prompt pack on `integration/rr-doc-builder-2`; execute inside `RoseRocket/document-generator`
+**Branch:** n/a — commit prompt pack on integration branch; execute inside `RoseRocket/document-generator`
+
+**Wave 5 note:** Remains **external**. Templara does not implement service internals; keep using [`docs/discovery/document-generator-prompts.md`](../../discovery/document-generator-prompts.md).
 
 **Context (why):**  
 From `platform-components`, `document-generator` is an **image-only black box** ([P2](../../discovery/P2-generator-pipeline.md), [P9](../../discovery/P9-server-render-feasibility.md), [00-DISCOVERY-REPORT.md](../../discovery/00-DISCOVERY-REPORT.md) §5). Full A′ (mount React inside the service Chrome) is blocked on print CSS, fonts, asset-wait, CSP, and bundle hosting. A′-lite can ship without those answers, but Wave 1 still needs a **ready-to-run** prompt pack so discovery can proceed in parallel.
