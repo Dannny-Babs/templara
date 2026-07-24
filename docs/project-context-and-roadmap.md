@@ -457,10 +457,10 @@ The next best practical step is resize handles plus keyboard editing operations,
 
 Remaining (do later):
 
-- **Capture the remaining 8 screenshots** and replace the `📷 Screenshot needed` placeholders. Needed states: Data panel close-up; binding a field to a text node; Layers panel with a selection; inspector for a selected text element; Diagnostics badge + open dock; bottom-left zoom dock with presets open; Text-tool placement on canvas; editor↔preview side-by-side. Pipeline is proven: run `pnpm studio`, drive the browser, save into `apps/docs/public/user-guide/`.
-- **Establish a repeatable screenshot workflow** (fixed viewport size + naming) so guide images can be refreshed after UI changes without drift.
+- **Diagnostics screenshot** still thin — re-capture after the dock is opened with real findings (`diagnostics-dock.png` pipeline lives in `scripts/capture-user-guide.mjs`).
+- **Establish a repeatable screenshot workflow** — `pnpm studio` then `node scripts/capture-user-guide.mjs http://localhost:<port>/` (Studio binds IPv6 `localhost`; avoid `127.0.0.1`). Fixed viewport 1440×900.
 - **Add screenshot annotations/callouts** (numbered markers) for the interface tour.
-- Revisit once the field-test issues in [embedding-field-test-issues.md](embedding-field-test-issues.md) are addressed, since several (dropdowns, preview button, diagnostics visual, layer names in embedded mode) change what the screenshots should show.
+- Revisit once remaining field-test polish lands.
 
 ## Execution Approach (how we'll run the work)
 
