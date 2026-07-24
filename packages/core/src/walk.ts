@@ -4,7 +4,7 @@ export type AnyNode = DocNode | FlowNode;
 
 /**
  * Depth-first walk of a node list. Shared by validation and binding extraction
- * so child recursion stays in sync (including grid `staticRows`).
+ * so child recursion stays in sync with renderer/editor effective grid children.
  */
 export function forEachNode(
   nodes: AnyNode[],
@@ -24,6 +24,10 @@ export function forEachNode(
 /**
  * Direct child collections for a node. Order is stable but not semantically
  * significant — callers should not rely on visit order beyond parent-before-child.
+ *
+ * Grid body rows mirror editor `gridBodyRows` / renderer `createGridBodyRowPlans`:
+ * bound grids walk `row` only; unbound grids with `staticRows` walk those rows
+ * (not `row` again, which the editor may alias to `staticRows[0]`).
  */
 export function childCollections(node: AnyNode): AnyNode[][] {
   switch (node.type) {
@@ -48,7 +52,12 @@ export function childCollections(node: AnyNode): AnyNode[][] {
       return node.fallback ? [node.children, node.fallback] : [node.children];
     case "grid": {
       const collections: AnyNode[][] = [];
-      const rows = [node.header, node.row, node.footer, ...(node.staticRows ?? [])];
+      const bodyRows = node.binding
+        ? [node.row]
+        : node.staticRows?.length
+          ? node.staticRows
+          : [node.row];
+      const rows = [node.header, ...bodyRows, node.footer];
 
       for (const row of rows) {
         if (!row) {
