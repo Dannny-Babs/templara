@@ -1,4 +1,5 @@
 ### TASK G0 — Stand up `apps/evals` package + Vitest
+**Status:** done (merged into `integration/rr-doc-builder-2`)  
 **Stream:** G — Docs, fixtures & evals   **Depends on:** none   **Model tier:** executor  
 **Branch:** `chore/eval-harness-setup` (cut from `integration/rr-doc-builder-2`)
 
@@ -45,10 +46,10 @@ Nothing merges without gates ([orchestration-plan.md](../../orchestration-plan.m
 Web-search: “Vitest monorepo workspace package setup 2025” / “pnpm workspace private package vitest” — confirm current Vitest config defaults for ESM packages.
 
 **Acceptance criteria (testable):**
-- [ ] `apps/evals` exists with `package.json`, README, copied invoice fixtures, smoke test.
-- [ ] `pnpm --filter @templara/evals test` passes.
-- [ ] `pnpm typecheck && pnpm test && pnpm build` green from repo root.
-- [ ] README documents fixture copy provenance.
+- [x] `apps/evals` exists with `package.json`, README, copied invoice fixtures, smoke test.
+- [x] `pnpm --filter @templara/evals test` passes.
+- [x] `pnpm typecheck && pnpm test && pnpm build` green from repo root.
+- [x] README documents fixture copy provenance.
 
 **Tests to write:**
 - Unit/smoke: `fixtures-load.test.ts` (JSON parse).

@@ -40,10 +40,10 @@ Rough order (orchestration §9): **H** (parallel, external) + **G0→G1** + **A1
 
 | ID | Title | Stream | Depends on | Status | Branch |
 | --- | --- | --- | --- | --- | --- |
-| [G0](G0-evals-harness.md) | `apps/evals` package + Vitest | G | — | ready | `chore/eval-harness-setup` |
-| [G1](G1-invoice-context-shape.md) | Invoice context-shape / fixture contract tests | G | G0 | ready | `chore/eval-harness-setup` |
-| [A1](A1-extract-bindings.md) | `extractBindings` in `@templara/core` | A | — | ready | `feat/binding-path-extractor` |
-| [A2](A2-to-record-context-paths.md) | `toRecordContextPaths` ↔ P3 `normalizeRecordPaths` | A | A1 | ready | `feat/binding-path-extractor` |
+| [G0](G0-evals-harness.md) | `apps/evals` package + Vitest | G | — | done | `chore/eval-harness-setup` → `integration/rr-doc-builder-2` |
+| [G1](G1-invoice-context-shape.md) | Invoice context-shape / fixture contract tests | G | G0 | done | `chore/eval-harness-setup` → `integration/rr-doc-builder-2` |
+| [A1](A1-extract-bindings.md) | `extractBindings` in `@templara/core` | A | — | done | `feat/binding-path-extractor` → `integration/rr-doc-builder-2` |
+| [A2](A2-to-record-context-paths.md) | `toRecordContextPaths` ↔ P3 `normalizeRecordPaths` | A | A1 | done | `feat/binding-path-extractor` → `integration/rr-doc-builder-2` |
 | [H1](H1-document-generator-discovery.md) | `document-generator` discovery prompt pack | H | — | ready | n/a (external repo) |
 | [G2](backlog.md#g2) | SSR golden / HTML fidelity harness | G | G1, B1 | backlog | — |
 | [A3](backlog.md#a3) | Real-record preview wiring (host) | A | A2 | backlog | — |

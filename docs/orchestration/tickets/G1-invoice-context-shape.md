@@ -1,4 +1,5 @@
 ### TASK G1 — Invoice context-shape / fixture contract tests
+**Status:** done (merged into `integration/rr-doc-builder-2`)  
 **Stream:** G — Docs, fixtures & evals   **Depends on:** G0   **Model tier:** executor  
 **Branch:** `chore/eval-harness-setup` (same branch as G0 if sequential; otherwise rebase onto G0)
 
@@ -39,11 +40,11 @@ Doc Builder 1 context is `{ org, record, document }` built path-by-path — **no
 Web-search: “contract testing JSON fixtures vitest deep path assertions” — prefer simple path helpers over heavy schema libs unless already in the repo.
 
 **Acceptance criteria (testable):**
-- [ ] Tests fail if `org` / `record` / `document` are missing.
-- [ ] Tests fail if listed money/date suffix leaves are missing or not strings.
-- [ ] `pnpm --filter @templara/evals test` green.
-- [ ] `pnpm typecheck && pnpm test && pnpm build` green.
-- [ ] No SSR/HTML golden assertions in this ticket.
+- [x] Tests fail if `org` / `record` / `document` are missing.
+- [x] Tests fail if listed money/date suffix leaves are missing or not strings.
+- [x] `pnpm --filter @templara/evals test` green.
+- [x] `pnpm typecheck && pnpm test && pnpm build` green.
+- [x] No SSR/HTML golden assertions in this ticket.
 
 **Tests to write:**
 - `invoice-context-shape.test.ts` (unit/contract).

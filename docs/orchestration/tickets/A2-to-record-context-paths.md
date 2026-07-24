@@ -1,4 +1,5 @@
 ### TASK A2 — `toRecordContextPaths` aligned with P3 `normalizeRecordPaths`
+**Status:** done (merged into `integration/rr-doc-builder-2`)  
 **Stream:** A — Data binding   **Depends on:** A1   **Model tier:** executor  
 **Branch:** `feat/binding-path-extractor` (same stream branch as A1)
 
@@ -47,11 +48,11 @@ normalizeRecordPaths(paths) =
 Web-search not critical; mirror the audited 8-line function. Optionally search “pure path prefix normalize unit test table-driven” for test style.
 
 **Acceptance criteria (testable):**
-- [ ] `toRecordContextPaths` matches P3 filter+strip semantics for `record.` paths.
-- [ ] Non-record prefixes dropped; uniqueness + sort verified by tests.
-- [ ] Exported from `@templara/core` with JSDoc linking P3 behavior.
-- [ ] Changeset covers the new export.
-- [ ] `pnpm typecheck && pnpm test && pnpm build` green.
+- [x] `toRecordContextPaths` matches P3 filter+strip semantics for `record.` paths.
+- [x] Non-record prefixes dropped; uniqueness + sort verified by tests.
+- [x] Exported from `@templara/core` with JSDoc linking P3 behavior.
+- [x] Changeset covers the new export.
+- [x] `pnpm typecheck && pnpm test && pnpm build` green.
 
 **Tests to write:**
 - Table-driven unit tests co-located in core (extend `extractBindings.test.ts` or new `toRecordContextPaths.test.ts`).
