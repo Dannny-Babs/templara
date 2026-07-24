@@ -1,15 +1,17 @@
 /**
- * Money formatting suffix leaves present in `fixtures/invoice-context.json`
- * and asserted by G1 contract tests.
- *
- * This is the fixture-present subset only — not the full closed P3
- * `MoneyFormatType` set (`withCurrencyCode` exists in Doc Builder 1 but is
- * absent from this invoice fixture). See docs/discovery/P3-context-builder.md
- * §2d for the complete enum. Eval assertions only — not the Stream C adapter.
+ * @deprecated Import money suffixes from `@templara/core` (`MONEY_FORMAT_SUFFIXES`).
+ * Re-export kept only so local eval helpers stay one line; fixture-present subset
+ * is the first two money leaves that appear in invoice-context.json.
  */
-export const MONEY_SUFFIX_LEAVES = [
+export {
+  MONEY_FORMAT_SUFFIXES,
+  type MoneyFormatSuffix,
+} from "@templara/core";
+
+/** Fixture-present money leaves asserted by G1 (subset of P3 MoneyFormatType). */
+export const FIXTURE_MONEY_SUFFIX_LEAVES = [
   "withDecimalsAndCurrencyCode",
   "unroundedWithoutCurrencyCode",
 ] as const;
 
-export type MoneySuffixLeaf = (typeof MONEY_SUFFIX_LEAVES)[number];
+export type FixtureMoneySuffixLeaf = (typeof FIXTURE_MONEY_SUFFIX_LEAVES)[number];

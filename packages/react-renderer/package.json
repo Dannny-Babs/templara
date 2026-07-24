@@ -19,6 +19,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./ssr": {
+      "types": "./dist/ssr.d.ts",
+      "import": "./dist/ssr.js"
     }
   },
   "publishConfig": {
@@ -30,10 +34,16 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@templara/core": "workspace:*",
     "@templara/renderer": "workspace:*",
     "bwip-js": "^4.11.1"
   },
   "peerDependencies": {
-    "react": "^19.0.0"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   }
 }

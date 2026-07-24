@@ -1,6 +1,8 @@
-# Backlog stubs (post–Wave 1)
+# Backlog stubs (post–Wave 2)
 
 Planner expands these into full §6 tickets in a later pass. One-liners + depends-on only.
+
+**Wave 2 (in tickets/):** C1, C2, B0, B1 — see [README.md](README.md).
 
 ## Stream A — Data binding (remaining)
 
@@ -16,31 +18,23 @@ Planner expands these into full §6 tickets in a later pass. One-liners + depend
 
 ### G2 — SSR golden / HTML fidelity harness
 **Depends on:** G1, B1  
-**One-liner:** After a Node-safe SSR-to-HTML entrypoint exists, compare Templara HTML (or normalized subset) against `docs/discovery/fixtures/invoice-rendered.html` / evals copy; no HTML golden in Wave 1.
+**One-liner:** After a Node-safe SSR-to-HTML entrypoint exists, compare Templara HTML (or normalized subset) against `docs/discovery/fixtures/invoice-rendered.html` / evals copy; no full invoice HTML golden in Wave 2 smoke.
 
-## Stream B — Server render (A′-lite)
+## Stream B — Server render (A′-lite) remaining
 
-<a id="b1"></a>
-
-### B1 — Node-safe SSR-to-HTML entrypoint
-**Depends on:** A1 (bindings not strictly required for paint, but Wave order prefers A first)  
-**One-liner:** Add a DOM-free HTML serialization path for `@templara/react-renderer` output (or thin shared lib) so platform-model can POST HTML to existing `generate-document` print path ([P9](../../discovery/P9-server-render-feasibility.md) A′-lite).
+<a id="b2"></a>
 
 ### B2 — Host POST integration for generate-document
 **Depends on:** B1, H1 (fidelity unknowns)  
 **One-liner:** Wire platform-model (or embed host) to SSR Templara → HTML → existing document-generator PDF/preview routes; preserve auth and options (`showPageNumbers`, Letter).
 
-## Stream C — Value adapter
+## Stream C — Value adapter (remaining)
 
-<a id="c1"></a>
+<a id="c3"></a>
 
-### C1 — Value adapter / suffix allowlist parity
-**Depends on:** A2  
-**One-liner:** Document and test closed money/date/enum/measurement suffix leaves from P3 §2d so Templara bindings expect pre-formatted strings; no client reformat by default.
-
-### C2 — Org address key mismatch guard
-**Depends on:** C1  
-**One-liner:** Capture/fix the known `org.orgAddress.postal` vs `postalCode` mismatch ([P3](../../discovery/P3-context-builder.md) §0 / P4) so Templara templates do not silently blank.
+### C3 — Org address key mismatch guard
+**Depends on:** C2  
+**One-liner:** Capture/fix the known `org.orgAddress.postal` vs `postalCode` mismatch ([P3](../../discovery/P3-context-builder.md) §0 / P4) so Templara templates do not silently blank. (Formerly backlog “C2”; Wave 2 C2 is value-adapter helpers.)
 
 ## Stream D — Doc-type registry
 

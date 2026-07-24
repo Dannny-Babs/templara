@@ -44,16 +44,28 @@ export function DocumentPreview({
     styleElement.textContent = fontImports;
   }, [fontImports]);
 
+  // In-tree <style> so SSR (renderToStaticMarkup) includes font @imports;
+  // useEffect still mirrors into document.head for client preview.
+  const fontStyle =
+    fontImports.length > 0
+      ? createElement("style", {
+          "data-templara-fonts": "true",
+          dangerouslySetInnerHTML: { __html: fontImports }
+        })
+      : null;
+
   return createElement(
     "div",
     {
       className,
+      "data-templara-document": "true",
       style: {
         display: "grid",
         gap: 24,
         justifyContent: "center"
       }
     },
+    fontStyle,
     document.pages.map((page) =>
       createElement(RenderPageView, {
         key: page.id,
