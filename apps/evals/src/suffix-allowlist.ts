@@ -1,12 +1,13 @@
 /**
- * Money formatting suffix leaves used by G1 fixture assertions.
+ * Money formatting suffix leaves present in `fixtures/invoice-context.json`
+ * and asserted by G1 contract tests.
  *
- * The full closed set lives in docs/discovery/P3-context-builder.md §2d
- * (`MoneyFormatType`). This module is for eval assertions only — not the
- * Stream C value adapter.
+ * This is the fixture-present subset only — not the full closed P3
+ * `MoneyFormatType` set (`withCurrencyCode` exists in Doc Builder 1 but is
+ * absent from this invoice fixture). See docs/discovery/P3-context-builder.md
+ * §2d for the complete enum. Eval assertions only — not the Stream C adapter.
  */
 export const MONEY_SUFFIX_LEAVES = [
-  "withCurrencyCode",
   "withDecimalsAndCurrencyCode",
   "unroundedWithoutCurrencyCode",
 ] as const;

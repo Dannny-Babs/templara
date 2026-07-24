@@ -25,8 +25,12 @@ describe("invoice context shape", () => {
     expect(context.document).not.toBeNull();
   });
 
-  it("exposes known money suffix leaves as strings", () => {
-    expect(MONEY_SUFFIX_LEAVES).toContain("withDecimalsAndCurrencyCode");
+  it("exposes fixture money suffix leaves as strings", () => {
+    // Fixture-present only — not full P3 MoneyFormatType coverage.
+    expect([...MONEY_SUFFIX_LEAVES]).toEqual([
+      "withDecimalsAndCurrencyCode",
+      "unroundedWithoutCurrencyCode",
+    ]);
 
     const total = getAtPath(context, "record.total.withDecimalsAndCurrencyCode");
     const subTotal = getAtPath(context, "record.subTotal.withDecimalsAndCurrencyCode");
@@ -50,6 +54,19 @@ describe("invoice context shape", () => {
     expect(nestedMoneyLeaves.length).toBeGreaterThan(0);
     for (const path of nestedMoneyLeaves) {
       expect(typeof getAtPath(context, path)).toBe("string");
+    }
+
+    // Misc line rates use unroundedWithoutCurrencyCode in this fixture.
+    const unroundedLeaves = findPathsEndingWith(
+      context.record,
+      "unroundedWithoutCurrencyCode",
+      "record",
+    );
+    expect(unroundedLeaves.length).toBeGreaterThan(0);
+    for (const path of unroundedLeaves) {
+      const value = getAtPath(context, path);
+      expect(typeof value).toBe("string");
+      expect(value).not.toBe("");
     }
   });
 
