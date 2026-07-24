@@ -2,9 +2,9 @@
 
 Planner expands remaining stubs into full §6 tickets when scheduled.
 
-**Done (see [README.md](README.md)):** Waves 1–3 on `main`; Wave 4 E1/F1; Wave 5 F3/F4/F5 + A3 Templara seam.
+**Done (see [README.md](README.md)):** Waves 1–5 Templara seams; Wave 6 F6 preview chrome + left-panel resize + [host integration guide](../host-integration-guide.md).
 
-**Host-owned (ticket/spec only here):** [D1](D1-doc-type-registry.md), [B2](B2-host-generate-document.md), [H1](H1-document-generator-discovery.md). Host still must wire live records into `DocumentEditor` `data` (A3 host half).
+**Host-owned (ticket/spec only here):** [D1](D1-doc-type-registry.md), [B2](B2-host-generate-document.md), [H1](H1-document-generator-discovery.md). Host still must wire live records into `DocumentEditor` `data` (A3 host half). See [host-integration-guide.md](../host-integration-guide.md).
 
 ## Stream F — Editor UX (remaining polish)
 
@@ -17,9 +17,9 @@ Planner expands remaining stubs into full §6 tickets when scheduled.
 <a id="f6"></a>
 
 ### F6 — Preview button chrome polish
-**Status:** backlog  
+**Status:** done (Wave 6)  
+**Ticket:** [F6-preview-button-chrome.md](F6-preview-button-chrome.md)  
 **Field-test:** §1.4–1.5  
-**One-liner:** Clarify Preview control (chevron vs eye, sizing). Low priority vs F3/F4/F5; Preview itself already opens sample/large/export modes.
 
 <a id="f5-virtualize"></a>
 
@@ -27,6 +27,10 @@ Planner expands remaining stubs into full §6 tickets when scheduled.
 **Status:** backlog  
 **Depends on:** F5  
 **One-liner:** Windowed rendering if hosts still hitch when expanding thousands of schema rows after Wave 5 collapse/search.
+
+### F1.12 — Resizable left panel
+**Status:** done (Wave 6)  
+**One-liner:** Layers/data column drag-resize (220–480px), same pattern as the right inspector.
 
 ## Stream A — Host follow-up
 

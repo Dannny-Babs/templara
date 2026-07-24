@@ -41,7 +41,6 @@ import {
   ThirdBracketIcon,
   TypeCursorIcon,
   Undo03Icon,
-  ViewIcon,
 } from "@hugeicons/core-free-icons";
 import {
   ChevronDownIcon as ChevronDownSharpIcon,
@@ -185,6 +184,9 @@ const TOOLTIP_DELAY_MS = 420;
 const BINDING_DRAG_TYPE = "application/x-templara-binding";
 const INSPECTOR_PANEL_WIDTH = 320;
 const INSPECTOR_MIN_WIDTH = 280;
+const LEFT_PANEL_WIDTH = 300;
+const LEFT_PANEL_MIN_WIDTH = 220;
+const LEFT_PANEL_MAX_WIDTH = 480;
 const INSPECTOR_MAX_WIDTH = 640;
 const DATA_PANEL_DEFAULT_HEIGHT = 286;
 const DATA_PANEL_MIN_HEIGHT = 44;
@@ -447,6 +449,7 @@ export function DocumentEditor({
   const loadedValueIdRef = useRef(value.id);
   const loadedInitialPageIdRef = useRef(initialPageId);
   const [inspectorWidth, setInspectorWidth] = useState(INSPECTOR_PANEL_WIDTH);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(LEFT_PANEL_WIDTH);
   const [dataPanelHeight, setDataPanelHeight] = useState(DATA_PANEL_DEFAULT_HEIGHT);
 
   const beginInspectorResize = useCallback(
@@ -470,6 +473,32 @@ export function DocumentEditor({
       document.body.style.userSelect = "none";
     },
     [inspectorWidth],
+  );
+
+  const beginLeftPanelResize = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = leftPanelWidth;
+      const onMove = (moveEvent: globalThis.PointerEvent): void => {
+        const next = Math.min(
+          LEFT_PANEL_MAX_WIDTH,
+          Math.max(LEFT_PANEL_MIN_WIDTH, startWidth + (moveEvent.clientX - startX)),
+        );
+        setLeftPanelWidth(next);
+      };
+      const onUp = (): void => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [leftPanelWidth],
   );
 
   const beginDataPanelResize = useCallback(
@@ -1704,7 +1733,7 @@ export function DocumentEditor({
       style: {
         ...shellStyle,
         ...hostDesignTokensToCssVars(hostDesignTokens, { embedded }),
-        gridTemplateColumns: `60px 300px minmax(0, 1fr) ${inspectorWidth}px`,
+        gridTemplateColumns: `60px ${leftPanelWidth}px minmax(0, 1fr) ${inspectorWidth}px`,
       },
     },
     createElement(TopToolbar, {
@@ -1757,6 +1786,11 @@ export function DocumentEditor({
           gridTemplateRows: `minmax(0, 1fr) ${dataPanelHeight}px`,
         },
       },
+      createElement("div", {
+        style: leftPanelResizeHandleStyle,
+        onPointerDown: beginLeftPanelResize,
+        title: "Drag to resize layers panel",
+      }),
       createElement(NodeLayerList, {
         pages: draftTemplate.pages,
         items: nodeItems,
@@ -2723,16 +2757,11 @@ function PreviewDropdown({
           }),
         style: previewButtonStyle,
       },
-      createElement(ToolIcon, {
-        icon: ViewIcon,
-        style: toolbarIconStyle,
-        size: 16,
-      }),
       createElement("span", null, "Preview"),
       createElement(ToolIcon, {
-        icon: ChevronDownIcon,
-        style: toolbarIconStyle,
-        size: 13,
+        icon: ChevronDownSharpIcon,
+        style: previewChevronStyle,
+        size: 16,
       }),
     ),
     open
@@ -6716,6 +6745,17 @@ const insertToolLabelStyle: CSSProperties = {
   textAlign: "left",
 };
 
+const leftPanelResizeHandleStyle: CSSProperties = {
+  position: "absolute",
+  top: 0,
+  right: 0,
+  bottom: 0,
+  width: 8,
+  zIndex: 30,
+  cursor: "col-resize",
+  touchAction: "none",
+};
+
 const leftPanelStyle: CSSProperties = {
   gridColumn: 2,
   gridRow: 2,
@@ -7144,20 +7184,27 @@ const zoomControlValueStyle: CSSProperties = {
 };
 
 const previewButtonStyle: CSSProperties = {
-  height: 38,
-  minWidth: 120,
+  height: 42,
+  minWidth: 112,
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
   gap: 8,
-  padding: "0 16px",
-  border: "1px solid #d7dce4",
-  borderRadius: 7,
+  padding: "0 14px 0 16px",
+  border: "1px solid #c5cad3",
+  borderRadius: 8,
   background: "#ffffff",
   color: "#111827",
-  boxShadow: "0 1px 1px rgba(16, 24, 40, 0.02)",
+  boxShadow: "none",
   cursor: "pointer",
-  font: `600 13px/1 ${UI_FONT_FAMILY}`,
+  font: `650 14px/1 ${UI_FONT_FAMILY}`,
+  letterSpacing: "-0.01em",
+};
+
+const previewChevronStyle: CSSProperties = {
+  display: "inline-flex",
+  color: "#4b5563",
+  flex: "0 0 auto",
 };
 
 const toolbarDropdownStyle: CSSProperties = {
