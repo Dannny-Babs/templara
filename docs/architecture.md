@@ -9,12 +9,32 @@ Template JSON + Data JSON
         ↓
 @templara/core
         ↓
-@templara/renderer
+@templara/renderer          ← Node-safe; emit RenderDocumentResult only (no HTML)
         ↓
 Render Tree
         ↓
-React Preview / Editor Canvas / PDF Export / Image Export
+@templara/react-renderer    ← only path to markup/pixels (DOM paint)
+        ↓
+Browser preview / @templara/pdf print / (future) headless Chrome PDF
 ```
+
+There is no Node-side HTML serialization path today. Two server-PDF routes follow from that:
+
+- **Full A′** — run the same React paint in a headless browser (highest fidelity, but blocked on `document-generator`-internal unknowns).
+- **A′-lite (recommended first step)** — add a Node-safe **SSR-to-HTML** entrypoint so `@templara/react-renderer` output can be serialized to an HTML string and POSTed to the host's existing Chrome print path. This is a new, concrete work item precisely because the Node-side HTML path does not exist yet.
+
+See Q4 / A′-lite and the [discovery report](discovery/00-DISCOVERY-REPORT.md) referenced in [project-context-and-roadmap.md](project-context-and-roadmap.md).
+
+## Integration Boundary Rules
+
+These rules matter when Templara is embedded into an existing document system:
+
+- **Template JSON stays the source of truth.** Do not convert Templara templates into Handlebars or raw HTML as the primary authoring format.
+- **`@templara/renderer` stays DOM-free.** It can run in Node and emit `RenderDocumentResult`, but it should not grow React, browser, or PDF-print dependencies.
+- **`@templara/react-renderer` owns pixels.** Browser preview, browser print, and future headless-Chrome PDF should paint through the same React renderer path.
+- **Host integration adapts around contracts.** The host can provide real data, design tokens, fonts, asset resolvers, and a server print shell, but it should not reach into editor internals.
+- **Binding extraction is an adapter, not a renderer feature.** Walking Template JSON to list required data paths belongs at the integration/editor boundary so the host context builder can hydrate real records.
+- **No unsafe expression escape hatch.** Logic remains structured data. Do not add arbitrary JavaScript or raw HTML injection to close integration gaps.
 
 ## v0 Scope
 

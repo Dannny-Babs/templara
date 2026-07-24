@@ -1,0 +1,157 @@
+{
+  "_note": "[SYNTHESIZED] Shape-faithful example of an Invoice RRecord object graph as produced by serialize() (platform-model/src/runtime/rrecord.serializer.ts) with a full `fields` map (parseAssocs of the invoice load paths). Demonstrates (a) the top-level system block serialize() always emits (id/objectKey/orgId/source/externalId), (b) how $-system fields (Identity + Audit mixins) appear on EVERY record and every connected record, and (c) connection expansion depth. Values illustrative; keys/shape faithful to the object definitions in recipes/base/objects/platformInvoice.ts, order.ts, financialLineItem.ts, address.ts.",
+
+  "id": "inv_01HZX8",
+  "objectKey": "invoice",
+  "orgId": "org_9f2a",
+  "source": "manual",
+  "externalId": null,
+
+  "$id": "inv_01HZX8",
+  "$externalId": null,
+  "$createdAt": "2026-07-01T13:02:11.000Z",
+  "$createdBy": "usr_ap01",
+  "$createdByFullName": "Dana Ops",
+  "$updatedAt": "2026-07-01T13:40:55.000Z",
+  "$updatedBy": "usr_ap01",
+  "$updatedByFullName": "Dana Ops",
+  "$ownerId": "usr_ap01",
+  "$version": 4,
+  "$source": "manual",
+
+  "fullId": "INVOICE-100482",
+  "name": "July haul cycle — Acme",
+  "status": "created",
+  "notes": "Consolidated invoice for July haul cycle. Detention billed separately.",
+  "invoiceDate": { "dateTimeInLocation": "2026-07-01T00:00:00", "dateTimeInLocationEnd": null },
+  "dueDate": { "dateTimeInLocation": "2026-07-31T00:00:00", "dateTimeInLocationEnd": null },
+  "terms": "net30",
+  "billingTerms": "shipperPrepaid",
+
+  "customer": {
+    "id": "cus_acme",
+    "objectKey": "customer",
+    "orgId": "org_9f2a",
+    "$id": "cus_acme",
+    "$externalId": "QBO-CUST-4471",
+    "$createdAt": "2025-02-10T10:00:00.000Z",
+    "$version": 22,
+    "fullId": "CUSTOMER-3391",
+    "name": "Acme Manufacturing LLC",
+    "isTaxExempt": false
+  },
+
+  "invoiceToAddress": {
+    "id": "adr_to01",
+    "objectKey": "address",
+    "orgId": "org_9f2a",
+    "$id": "adr_to01",
+    "$externalId": null,
+    "companyName": "Acme Manufacturing LLC",
+    "address1": "18 Foundry Rd",
+    "address2": "Dock 4",
+    "city": "Detroit",
+    "state": "MI",
+    "postalCode": "48201",
+    "country": "US"
+  },
+
+  "remitToAddress": {
+    "id": "adr_rm01",
+    "objectKey": "address",
+    "orgId": "org_9f2a",
+    "$id": "adr_rm01",
+    "companyName": "Northwind Freight Systems Inc. — Remittance",
+    "address1": "PO Box 88210",
+    "city": "Chicago",
+    "state": "IL",
+    "postalCode": "60693",
+    "country": "US"
+  },
+
+  "lineItems": [
+    {
+      "id": "fli_001",
+      "objectKey": "financialLineItem",
+      "orgId": "org_9f2a",
+      "$id": "fli_001",
+      "$externalId": null,
+      "$createdAt": "2026-07-01T13:02:11.000Z",
+      "$version": 1,
+      "type": "Line haul",
+      "description": "Toledo, OH → Detroit, MI (FTL, dry van)",
+      "quantity": 1,
+      "rate": { "amount": 2950, "currencyCode": "USD" },
+      "total": { "amount": 2950, "currencyCode": "USD" },
+      "taxRate": {
+        "id": "tax_mi",
+        "objectKey": "taxRate",
+        "$id": "tax_mi",
+        "name": "MI State",
+        "effectiveTaxRate": 6,
+        "taxRateComponents": [
+          { "id": "txc_mi1", "objectKey": "taxRateComponent", "$id": "txc_mi1", "name": "MI State", "rate": 6 }
+        ]
+      },
+      "order": {
+        "id": "ord_77310",
+        "objectKey": "order",
+        "orgId": "org_9f2a",
+        "$id": "ord_77310",
+        "$externalId": "TMS-77310",
+        "$createdAt": "2026-06-28T09:15:00.000Z",
+        "$version": 12,
+        "fullId": "ORDER-77310",
+        "poNum": "PO-9910",
+        "refNum": "REF-55021",
+        "loadTenderNum": "LT-33018",
+        "billingTerms": "shipperPrepaid",
+        "totalAmount": { "amount": 3150, "currencyCode": "USD" },
+        "shipper": {
+          "id": "adr_sh10", "objectKey": "address", "$id": "adr_sh10",
+          "companyName": "Acme Plant 2", "address1": "900 Assembly Dr",
+          "city": "Toledo", "state": "OH", "stateCode": "OH", "countryCode": "US",
+          "postalCode": "43604", "country": "US"
+        },
+        "consignee": {
+          "id": "adr_cn10", "objectKey": "address", "$id": "adr_cn10",
+          "companyName": "Acme Manufacturing LLC", "address1": "18 Foundry Rd", "address2": "Dock 4",
+          "city": "Detroit", "state": "MI", "stateCode": "MI", "countryCode": "US",
+          "postalCode": "48201", "country": "US"
+        },
+        "commodities": [
+          {
+            "id": "com_10a", "objectKey": "commodity", "$id": "com_10a",
+            "commodityType": "pallets", "description": "Palletized auto parts",
+            "freightClass": "70", "pieces": 12, "quantity": 12, "weight": 18400
+          }
+        ],
+        "stops": [
+          {
+            "id": "stp_10o", "objectKey": "stop", "$id": "stp_10o",
+            "ordinal": 1,
+            "location": { "id": "adr_sh10", "objectKey": "address", "$id": "adr_sh10", "companyName": "Acme Plant 2", "city": "Toledo", "state": "OH", "postalCode": "43604" }
+          },
+          {
+            "id": "stp_10d", "objectKey": "stop", "$id": "stp_10d",
+            "ordinal": 2,
+            "location": { "id": "adr_cn10", "objectKey": "address", "$id": "adr_cn10", "companyName": "Acme Manufacturing LLC", "city": "Detroit", "state": "MI", "postalCode": "48201" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fli_003",
+      "objectKey": "financialLineItem",
+      "$id": "fli_003",
+      "type": "Detention",
+      "description": "2.5 hrs @ $60/hr — Detroit delivery",
+      "quantity": 2.5,
+      "rate": { "amount": 60, "currencyCode": "USD" },
+      "total": { "amount": 150, "currencyCode": "USD" },
+      "taxRate": { "id": "tax_mi", "objectKey": "taxRate", "$id": "tax_mi", "name": "MI State", "effectiveTaxRate": 6 },
+      "order": null,
+      "_note": "order === null → this FLI is classified as a MISC line item (see Invoice.miscLineItems), not an order line item."
+    }
+  ]
+}
