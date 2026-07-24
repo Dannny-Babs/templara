@@ -1,8 +1,8 @@
 # Orchestration tickets — index
 
-**Integration branch:** `integration/rr-doc-builder-2-wave3`  
+**Integration branch:** `integration/rr-doc-builder-2-wave4`  
 **Plan:** [orchestration-plan.md](../../orchestration-plan.md) §6 template / §9–10 streams  
-**Wave:** Wave 3 (G2 SSR golden + C3 org postal aliases). Wave 2 (C1/C2/B0/B1) merged to `main` via PR #4; Wave 1 via PR #2; grid walker via PR #3.
+**Wave:** Wave 4 (E1 host tokens + F1 editor UX). Waves 1–3 merged to `main` (PRs #2–#5).
 
 ## Dependency graph
 
@@ -44,7 +44,7 @@ flowchart TD
   E1 -.-> F1
 ```
 
-Rough order: Waves 1–2 done → Wave 3 **G2 + C3** (+ D/E/F tickets) → Wave 4 executes D1/E1/F1 (+ B2/A3 as ready).
+Rough order: Waves 1–3 done → Wave 4 **E1 + F1** (D1 host-owned) → Wave 5 **D1 host / A3 / B2 / F3–F5**.
 
 ## Status table
 
@@ -59,25 +59,28 @@ Rough order: Waves 1–2 done → Wave 3 **G2 + C3** (+ D/E/F tickets) → Wave 
 | [C2](C2-value-adapter-helpers.md) | Pre-formatted suffix value-adapter helpers | C | C1 | done | merged `main` (PR #4) |
 | [B0](B0-ssr-html-spike.md) | SSR-to-HTML spike / design note | B | A1 | done | merged `main` (PR #4) |
 | [B1](B1-render-template-to-html.md) | `renderTemplateToHtml` Node-safe entry | B | B0 | done | merged `main` (PR #4) |
-| [G2](G2-invoice-ssr-golden.md) | Templara invoice SSR golden + discovery HTML contract | G | G1, B1 | done | `integration/rr-doc-builder-2-wave3` |
-| [C3](C3-org-postal-aliases.md) | Org address `postal` ↔ `postalCode` adapter aliases | C | C2 | done | `integration/rr-doc-builder-2-wave3` |
-| [D1](D1-doc-type-registry.md) | Doc-type registry parity (host) | D | A2, B1 | ready | Wave 4 |
-| [E1](E1-host-design-tokens.md) | Host design-token inheritance | E | — | ready | Wave 4 |
-| [F1](F1-editor-ux-field-test.md) | Editor UX field-test (one concrete fix) | F | — | ready | Wave 4 (ticket only in W3) |
-| [A3](backlog.md#a3) | Real-record preview wiring (host) | A | A2 | backlog | — |
-| [B2](backlog.md#b2) | Host POST generate-document integration | B | B1, H1 | backlog | — |
+| [G2](G2-invoice-ssr-golden.md) | Templara invoice SSR golden + discovery HTML contract | G | G1, B1 | done | merged `main` (PR #5) |
+| [C3](C3-org-postal-aliases.md) | Org address `postal` ↔ `postalCode` adapter aliases | C | C2 | done | merged `main` (PR #5) |
+| [D1](D1-doc-type-registry.md) | Doc-type registry parity (host) | D | A2, B1 | ready | Wave 5 host (ticket/spec only) |
+| [E1](E1-host-design-tokens.md) | Host design-token inheritance | E | — | done | `integration/rr-doc-builder-2-wave4` |
+| [F1](F1-editor-ux-field-test.md) | Editor UX field-test (canvas defaults + brand) | F | — | done | `integration/rr-doc-builder-2-wave4` |
+| [A3](backlog.md#a3) | Real-record preview wiring (host + optional Templara seam) | A | A2 | backlog | Wave 5+ |
+| [B2](backlog.md#b2) | Host POST generate-document integration | B | B1, H1 | backlog | Wave 5+ (host) |
+| [F3](backlog.md#f3) | Dropdown / popover overflow + sizing | F | F1 | backlog | Wave 5+ |
+| [F4](backlog.md#f4) | Human-readable layer names | F | F1 | backlog | Wave 5+ |
+| [F5](backlog.md#f5) | Large schema / data panel search & scale | F | F1 | backlog | Wave 5+ |
 
 **Status values:** `ready` · `in_progress` · `blocked` · `done` · `backlog`
 
-## Wave 3 merge gate
+## Wave 4 merge gate
 
-Before marking Wave 3 complete on `integration/rr-doc-builder-2-wave3`:
+Before marking Wave 4 complete on `integration/rr-doc-builder-2-wave4`:
 
-1. G2 evals: Templara `invoiceTemplate` SSR marker golden + discovery `invoice-rendered.html` contract; fidelity gap documented (no false DB1 HTML parity).
-2. C3: `ORG_ADDRESS_PATH_ALIASES` + `aliasOrgAddressPaths` in `@templara/core` with Changeset + unit/evals tests.
-3. D1 / E1 / F1 full §6 tickets ready for Wave 4 (F1 code optional; prefer not half-shipping).
-4. `pnpm typecheck && pnpm test` green for touched packages + evals.
-5. Do **not** require H1 external discovery execution or invented platform-model POSTs.
+1. F1: canvas layout aids default off; tests + changeset.
+2. E1: `HostDesignTokens` + CSS var bridge; `embedded` / `hideBrand`; tests + README + changeset.
+3. Tickets README/backlog updated; remaining UX/data work ticketed (not silently closed).
+4. `pnpm typecheck && pnpm test` green for `@templara/editor`.
+5. Do **not** invent platform-model POSTs or host doc-type registry implementations in this repo (D1/B2 stay host-owned).
 
 ## Files in this folder
 
@@ -94,7 +97,7 @@ Before marking Wave 3 complete on `integration/rr-doc-builder-2-wave3`:
 | [B1-render-template-to-html.md](B1-render-template-to-html.md) | Full §6 ticket (Wave 2, done) |
 | [G2-invoice-ssr-golden.md](G2-invoice-ssr-golden.md) | Full §6 ticket (Wave 3, done) |
 | [C3-org-postal-aliases.md](C3-org-postal-aliases.md) | Full §6 ticket (Wave 3, done) |
-| [D1-doc-type-registry.md](D1-doc-type-registry.md) | Full §6 ticket (Wave 4 ready) |
-| [E1-host-design-tokens.md](E1-host-design-tokens.md) | Full §6 ticket (Wave 4 ready) |
-| [F1-editor-ux-field-test.md](F1-editor-ux-field-test.md) | Full §6 ticket (Wave 4 ready; code deferred) |
-| [backlog.md](backlog.md) | Remaining stubs (A3, B2, F2, …) |
+| [D1-doc-type-registry.md](D1-doc-type-registry.md) | Full §6 ticket (host Wave 5; Templara ticket/spec only) |
+| [E1-host-design-tokens.md](E1-host-design-tokens.md) | Full §6 ticket (Wave 4, done) |
+| [F1-editor-ux-field-test.md](F1-editor-ux-field-test.md) | Full §6 ticket (Wave 4, done) |
+| [backlog.md](backlog.md) | Remaining stubs (A3, B2, F2–F6, …) |
