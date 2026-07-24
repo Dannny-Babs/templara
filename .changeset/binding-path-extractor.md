@@ -2,4 +2,4 @@
 "@templara/core": minor
 ---
 
-Add extractBindings to collect unique sorted binding paths from DocumentTemplate.
+Add extractBindings and toRecordContextPaths for host path-driven context building.

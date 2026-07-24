@@ -39,6 +39,42 @@ export function extractBindings(template: DocumentTemplate): string[] {
   return [...paths].sort();
 }
 
+/**
+ * Map Templara binding paths to the form expected by a host `buildRecordContext`.
+ *
+ * Aligned with Doc Builder 1 P3 `normalizeRecordPaths`: keep only paths that
+ * start with the exact prefix `record.` (case-sensitive), then strip that
+ * prefix. This helper additionally collapses duplicates, sorts (same policy
+ * as {@link extractBindings}), and drops empty strings (e.g. bare `"record."`).
+ *
+ * Host templates / bindings intended for Rose Rocket context must use
+ * `record.*` (and separately `org.*` / `document.*`) path prefixes.
+ * `org.*` and `document.*` are sourced separately by the host and are dropped
+ * here. Demo/sample templates that use domains like `invoice.*` / `business.*`
+ * correctly yield `[]` until paths are remapped by a host adapter.
+ *
+ * @see docs/discovery/P3-context-builder.md §2c
+ */
+export function toRecordContextPaths(paths: string[]): string[] {
+  const prefix = "record.";
+  const normalized = new Set<string>();
+
+  for (const path of paths) {
+    if (!path.startsWith(prefix)) {
+      continue;
+    }
+
+    const stripped = path.slice(prefix.length);
+    if (!stripped) {
+      continue;
+    }
+
+    normalized.add(stripped);
+  }
+
+  return [...normalized].sort();
+}
+
 function collectFromNode(node: AnyNode, add: (path: string | undefined | null) => void): void {
   if (node.logic?.visibleIf) {
     collectFromExpression(node.logic.visibleIf, add);
