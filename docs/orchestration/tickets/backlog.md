@@ -2,7 +2,7 @@
 
 Planner expands remaining stubs into full §6 tickets when scheduled.
 
-**Done (see [README.md](README.md)):** Waves 1–5 Templara seams; Wave 6 F6 preview chrome + left-panel resize + [host integration guide](../host-integration-guide.md).
+**Done (see [README.md](README.md)):** Waves 1–6 on `main`; Wave 7 F5v data-panel virtualization (this branch).
 
 **Host-owned (ticket/spec only here):** [D1](D1-doc-type-registry.md), [B2](B2-host-generate-document.md), [H1](H1-document-generator-discovery.md). Host still must wire live records into `DocumentEditor` `data` (A3 host half). See [host-integration-guide.md](../host-integration-guide.md).
 
@@ -11,7 +11,8 @@ Planner expands remaining stubs into full §6 tickets when scheduled.
 <a id="f2"></a>
 
 ### F2 — Remaining user-guide screenshots
-**Depends on:** F1 (prefer after UX stabilizes)  
+**Status:** in progress (Wave 7)  
+**Depends on:** F1  
 **One-liner:** Capture the eight remaining Studio screenshots listed in [project-context-and-roadmap.md](../../project-context-and-roadmap.md) Docs & Onboarding Follow-ups.
 
 <a id="f6"></a>
@@ -24,9 +25,10 @@ Planner expands remaining stubs into full §6 tickets when scheduled.
 <a id="f5-virtualize"></a>
 
 ### F5 follow-up — Data panel virtualization
-**Status:** backlog  
+**Status:** done (Wave 7)  
+**Ticket:** [F5v-data-panel-virtualization.md](F5v-data-panel-virtualization.md)  
 **Depends on:** F5  
-**One-liner:** Windowed rendering if hosts still hitch when expanding thousands of schema rows after Wave 5 collapse/search.
+**One-liner:** Windowed rendering when flattened rows ≥ 60.
 
 ### F1.12 — Resizable left panel
 **Status:** done (Wave 6)  

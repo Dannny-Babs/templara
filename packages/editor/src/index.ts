@@ -15,6 +15,7 @@ import type {
   PointerEvent,
   ReactElement,
   ReactNode,
+  UIEvent,
 } from "react";
 import type { IconSvgElement } from "@hugeicons/react";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -107,6 +108,7 @@ import {
   filterDataExplorerGroups,
   isFieldBindableForNode,
 } from "./dataExplorer.js";
+import { getVirtualWindow } from "./virtualList.js";
 import {
   NodeInspectorPanel,
   PageInspectorPanel,
@@ -4630,22 +4632,191 @@ function DataSchemaPanel({
               { style: emptyTextStyle },
               "No fields match that search.",
             )
-          : visibleGroups.map((group) =>
-              createElement(DataExplorerGroupView, {
-                key: group.id,
-                group,
-                selectedNode,
-                selectedCount,
-                collapsedFields,
-                onToggleField: (field) =>
-                  setCollapsedFields((current) => ({
-                    ...current,
-                    [dataTreeKey(group.id, field)]:
-                      !current[dataTreeKey(group.id, field)],
-                  })),
-                onActivateField,
-              }),
-            ),
+          : createElement(VirtualizedDataExplorerList, {
+              groups: visibleGroups,
+              selectedNode,
+              selectedCount,
+              collapsedFields,
+              onToggleField: (field, groupId) =>
+                setCollapsedFields((current) => ({
+                  ...current,
+                  [dataTreeKey(groupId, field)]:
+                    !current[dataTreeKey(groupId, field)],
+                })),
+              onActivateField,
+            }),
+    ),
+  );
+}
+
+const DATA_VIRTUALIZE_THRESHOLD = 60;
+const DATA_VIRTUAL_ROW_HEIGHT = 70;
+
+type FlatDataExplorerRow =
+  | { kind: "group"; key: string; group: DataExplorerGroup }
+  | {
+      kind: "field";
+      key: string;
+      group: DataExplorerGroup;
+      field: DataExplorerField;
+    };
+
+function flattenDataExplorerRows(
+  groups: DataExplorerGroup[],
+): FlatDataExplorerRow[] {
+  const rows: FlatDataExplorerRow[] = [];
+  for (const group of groups) {
+    rows.push({ kind: "group", key: `group:${group.id}`, group });
+    for (const field of group.fields) {
+      rows.push({
+        kind: "field",
+        key: `field:${group.id}:${field.id}`,
+        group,
+        field,
+      });
+    }
+  }
+  return rows;
+}
+
+function VirtualizedDataExplorerList({
+  groups,
+  selectedNode,
+  selectedCount,
+  collapsedFields,
+  onToggleField,
+  onActivateField,
+}: {
+  groups: DataExplorerGroup[];
+  selectedNode?: EditableNode;
+  selectedCount: number;
+  collapsedFields: Record<string, boolean>;
+  onToggleField: (field: DataExplorerField, groupId: string) => void;
+  onActivateField: (field: DataExplorerField) => void;
+}): ReactElement {
+  const rows = useMemo(() => flattenDataExplorerRows(groups), [groups]);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(240);
+  const shouldVirtualize = rows.length >= DATA_VIRTUALIZE_THRESHOLD;
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node || !shouldVirtualize) {
+      return;
+    }
+
+    const update = (): void => {
+      setViewportHeight(node.clientHeight);
+      setScrollTop(node.scrollTop);
+    };
+
+    update();
+    const observer =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => update())
+        : null;
+    observer?.observe(node);
+    return () => observer?.disconnect();
+  }, [shouldVirtualize, rows.length]);
+
+  if (!shouldVirtualize) {
+    return createElement(
+      "div",
+      null,
+      groups.map((group) =>
+        createElement(DataExplorerGroupView, {
+          key: group.id,
+          group,
+          selectedNode,
+          selectedCount,
+          collapsedFields,
+          onToggleField: (field) => onToggleField(field, group.id),
+          onActivateField,
+        }),
+      ),
+    );
+  }
+
+  const window = getVirtualWindow({
+    scrollTop,
+    viewportHeight,
+    itemCount: rows.length,
+    itemHeight: DATA_VIRTUAL_ROW_HEIGHT,
+    overscan: 6,
+  });
+  const visibleRows = rows.slice(window.startIndex, window.endIndex);
+
+  return createElement(
+    "div",
+    {
+      ref: scrollRef,
+      style: dataVirtualScrollStyle,
+      onScroll: (event: UIEvent<HTMLDivElement>) => {
+        setScrollTop(event.currentTarget.scrollTop);
+      },
+    },
+    createElement(
+      "div",
+      {
+        style: {
+          height: window.totalHeight,
+          position: "relative",
+        },
+      },
+      createElement(
+        "div",
+        {
+          style: {
+            transform: `translateY(${window.paddingTop}px)`,
+          },
+        },
+        visibleRows.map((row) =>
+          row.kind === "group"
+            ? createElement(
+                "div",
+                {
+                  key: row.key,
+                  style: {
+                    ...dataGroupHeaderStyle,
+                    height: DATA_VIRTUAL_ROW_HEIGHT,
+                    boxSizing: "border-box",
+                    alignContent: "center",
+                  },
+                },
+                createElement("span", null, row.group.title),
+                row.group.detail
+                  ? createElement(
+                      "span",
+                      { style: dataGroupDetailStyle },
+                      row.group.detail,
+                    )
+                  : null,
+              )
+            : createElement(
+                "div",
+                {
+                  key: row.key,
+                  style: {
+                    minHeight: DATA_VIRTUAL_ROW_HEIGHT,
+                    boxSizing: "border-box",
+                  },
+                },
+                createElement(DataExplorerFieldRow, {
+                  field: row.field,
+                  selectedNode,
+                  selectedCount,
+                  collapsed: Boolean(
+                    collapsedFields[dataTreeKey(row.group.id, row.field)],
+                  ),
+                  onToggleCollapsed: row.field.hasChildren
+                    ? () => onToggleField(row.field, row.group.id)
+                    : undefined,
+                  onActivateField,
+                }),
+              ),
+        ),
+      ),
     ),
   );
 }
@@ -7681,6 +7852,17 @@ const dataPanelStyle: CSSProperties = {
 const dataFieldsStyle: CSSProperties = {
   overflowY: "visible",
   padding: "0 10px 12px",
+  display: "grid",
+  minHeight: 0,
+  flex: 1,
+};
+
+const dataVirtualScrollStyle: CSSProperties = {
+  maxHeight: 280,
+  minHeight: 160,
+  overflowY: "auto",
+  overflowX: "hidden",
+  paddingBottom: 8,
 };
 
 const blockInsertPanelStyle: CSSProperties = {
