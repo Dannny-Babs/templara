@@ -2,18 +2,18 @@
 
 Planner expands remaining stubs into full §6 tickets when scheduled.
 
-**Done (see [README.md](README.md)):** Waves 1–6 on `main`; Wave 7 F5v data-panel virtualization (this branch).
+**Done (see [README.md](README.md)):** Waves 1–7 on `main`; Wave 8 diagnostics polish + D1 descriptor stub + host runbook (this branch).
 
-**Host-owned (ticket/spec only here):** [D1](D1-doc-type-registry.md), [B2](B2-host-generate-document.md), [H1](H1-document-generator-discovery.md). Host still must wire live records into `DocumentEditor` `data` (A3 host half). See [host-integration-guide.md](../host-integration-guide.md).
+**Host-owned execution:** Run [host-runbook.md](../host-runbook.md) in platform-components / document-generator. Tickets: [D1](D1-doc-type-registry.md), [B2](B2-host-generate-document.md), [H1](H1-document-generator-discovery.md), A3 host half.
 
 ## Stream F — Editor UX (remaining polish)
 
 <a id="f2"></a>
 
 ### F2 — Remaining user-guide screenshots
-**Status:** mostly done (Wave 7) — diagnostics still to re-capture  
+**Status:** done (Wave 7–8)  
 **Depends on:** F1  
-**One-liner:** Captured via `scripts/capture-user-guide.mjs`; placeholders replaced in user-guide MDX except a stronger diagnostics shot.
+**One-liner:** Screenshots wired; diagnostics dock captured in Wave 8.
 
 <a id="f6"></a>
 
@@ -34,11 +34,15 @@ Planner expands remaining stubs into full §6 tickets when scheduled.
 **Status:** done (Wave 6)  
 **One-liner:** Layers/data column drag-resize (220–480px), same pattern as the right inspector.
 
+### F1.15 — Diagnostics visual polish
+**Status:** done (Wave 8)  
+**One-liner:** Neutral dock chrome (no indigo “AI” look); screenshot in user guide.
+
 ## Stream A — Host follow-up
 
 <a id="a3-host"></a>
 
 ### A3 host — Live record on canvas
-**Status:** backlog (host)  
+**Status:** backlog (host) — prompts in [host-runbook.md](../host-runbook.md)  
 **Depends on:** [A3](A3-real-record-preview.md) Templara seam  
 **One-liner:** Resolve invoice/order context in the host and pass `preparePreviewData(context)` into `DocumentEditor` `data`; prove IDs resolve.

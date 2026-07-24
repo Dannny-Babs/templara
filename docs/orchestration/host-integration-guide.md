@@ -3,7 +3,7 @@
 **Audience:** platform-components / platform-model engineers wiring `@templara/*` into Doc Builder 2.  
 **Status:** Templara Waves 1–5 shipped the package seams; **this repo cannot implement host registry or `document-generator` POSTs.** Use this checklist in the host worktrees.
 
-Related: [D1](tickets/D1-doc-type-registry.md), [B2](tickets/B2-host-generate-document.md), [A3](tickets/A3-real-record-preview.md), [H1](tickets/H1-document-generator-discovery.md), [discovery/00-DISCOVERY-REPORT.md](../discovery/00-DISCOVERY-REPORT.md).
+Related: [D1](tickets/D1-doc-type-registry.md), [B2](tickets/B2-host-generate-document.md), [A3](tickets/A3-real-record-preview.md), [H1](tickets/H1-document-generator-discovery.md), [discovery/00-DISCOVERY-REPORT.md](../discovery/00-DISCOVERY-REPORT.md), **[host-runbook.md](host-runbook.md)** (copy/paste prompts).
 
 ---
 

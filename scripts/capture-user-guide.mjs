@@ -93,17 +93,34 @@ try {
     }
   }
 
-  // Diagnostics
-  const diagnosticsBtn = page.getByRole("button", { name: /diagnostic/i }).first();
+  // Diagnostics dock — prefer title attribute, then aria region
+  const diagnosticsBtn = page.getByTitle(/Show diagnostics|Hide diagnostics/i).first();
   if (await diagnosticsBtn.isVisible().catch(() => false)) {
     await diagnosticsBtn.click();
-    await page.waitForTimeout(500);
-    await shot("diagnostics-dock.png", {
-      x: 40,
-      y: 520,
-      width: 720,
-      height: 340,
-    });
+    await page.waitForTimeout(700);
+    const dock = page.locator('section[aria-label="Document diagnostics"]');
+    await dock.waitFor({ state: "visible", timeout: 5000 }).catch(() => undefined);
+    const dockBox = await dock.boundingBox().catch(() => null);
+    const btnBox = await diagnosticsBtn.boundingBox();
+    if (dockBox && btnBox) {
+      const x = Math.max(0, Math.min(dockBox.x, btnBox.x) - 16);
+      const y = Math.max(0, Math.min(dockBox.y, btnBox.y) - 16);
+      const right = Math.max(dockBox.x + dockBox.width, btnBox.x + btnBox.width) + 16;
+      const bottom = Math.max(dockBox.y + dockBox.height, btnBox.y + btnBox.height) + 16;
+      await shot("diagnostics-dock.png", {
+        x,
+        y,
+        width: Math.min(480, right - x),
+        height: Math.min(480, bottom - y),
+      });
+    } else if (dockBox) {
+      await shot("diagnostics-dock.png", {
+        x: Math.max(0, dockBox.x - 8),
+        y: Math.max(0, dockBox.y - 8),
+        width: dockBox.width + 16,
+        height: dockBox.height + 16,
+      });
+    }
   }
 
   // Text tool

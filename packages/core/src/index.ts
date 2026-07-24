@@ -394,4 +394,5 @@ export * from "./migration.js";
 export * from "./logic.js";
 export * from "./formattingSuffixes.js";
 export * from "./orgAddressPathAliases.js";
+export * from "./documentTypeDescriptor.js";
 export { extractBindings, toRecordContextPaths } from "./extractBindings.js";

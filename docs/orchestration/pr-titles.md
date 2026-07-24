@@ -13,8 +13,10 @@
 
 **Wave 6** (merged #8): `feat(editor): Wave 6 preview chrome, resizable layers panel, host guide`
 
-**Wave 7** open with:
+**Wave 7** merged #9: `feat(editor): Wave 7 data-panel virtualization and user-guide screenshots`
 
-`feat(editor): Wave 7 data-panel virtualization and user-guide screenshots`
+**Wave 8** open with:
 
-Compare: https://github.com/Dannny-Babs/templara/compare/main...integration/rr-doc-builder-2-wave7?expand=1
+`feat: Wave 8 diagnostics polish, doc-type descriptor, and host runbook`
+
+Compare: https://github.com/Dannny-Babs/templara/compare/main...integration/rr-doc-builder-2-wave8?expand=1

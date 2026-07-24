@@ -7152,9 +7152,9 @@ const diagnosticsToolbarButtonStyle: CSSProperties = {
 };
 
 const diagnosticsToolbarButtonOpenStyle: CSSProperties = {
-  borderColor: "#a5b4fc",
-  background: "#eef2ff",
-  color: "#3730a3",
+  borderColor: "#94a3b8",
+  background: "#f1f5f9",
+  color: "#0f172a",
 };
 
 const diagnosticsDotStyle: CSSProperties = {
@@ -7174,10 +7174,10 @@ const diagnosticsDockStyle: CSSProperties = {
   maxHeight: "42%",
   display: "grid",
   gridTemplateRows: "auto minmax(0, 1fr)",
-  border: "1px solid #e2e8f0",
-  borderRadius: 8,
+  border: "1px solid #d8dee8",
+  borderRadius: 6,
   background: "#ffffff",
-  boxShadow: "0 8px 24px rgba(15, 23, 42, 0.08)",
+  boxShadow: "0 4px 16px rgba(15, 23, 42, 0.06)",
   overflow: "hidden",
 };
 
@@ -7186,24 +7186,24 @@ const diagnosticsDockHeaderStyle: CSSProperties = {
   alignItems: "flex-start",
   justifyContent: "space-between",
   gap: 14,
-  padding: "12px 14px 10px",
-  borderBottom: "1px solid #eef0f3",
-  background: "#f8fafc",
+  padding: "10px 12px",
+  borderBottom: "1px solid #e8ecf1",
+  background: "#ffffff",
 };
 
 const diagnosticsDockTitleStyle: CSSProperties = {
   margin: 0,
   color: "#0f172a",
-  fontSize: 12,
+  fontSize: 13,
   fontWeight: 650,
-  letterSpacing: 0.01,
+  letterSpacing: "-0.01em",
 };
 
 const diagnosticsDockSubtitleStyle: CSSProperties = {
-  margin: "4px 0 0",
+  margin: "3px 0 0",
   color: "#64748b",
   fontSize: 11,
-  lineHeight: 1.4,
+  lineHeight: 1.35,
   fontWeight: 500,
 };
 
@@ -7211,23 +7211,23 @@ const diagnosticsDockCloseButtonStyle: CSSProperties = {
   height: 28,
   padding: "0 9px",
   border: "1px solid #d7dce4",
-  borderRadius: 6,
+  borderRadius: 5,
   background: "#ffffff",
   color: "#475569",
-  font: `650 11px/1 ${UI_FONT_FAMILY}`,
+  font: `600 11px/1 ${UI_FONT_FAMILY}`,
   cursor: "pointer",
 };
 
 const diagnosticsDockBodyStyle: CSSProperties = {
   minHeight: 0,
   overflow: "auto",
-  padding: 12,
+  padding: 10,
 };
 
 const diagnosticsGroupStyle: CSSProperties = {
   display: "grid",
-  gap: 7,
-  marginBottom: 12,
+  gap: 6,
+  marginBottom: 10,
 };
 
 const diagnosticsGroupHeaderStyle: CSSProperties = {
@@ -7236,8 +7236,8 @@ const diagnosticsGroupHeaderStyle: CSSProperties = {
   justifyContent: "space-between",
   color: "#64748b",
   fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: 0.5,
+  fontWeight: 700,
+  letterSpacing: 0.04,
   textTransform: "uppercase",
 };
 
@@ -7246,20 +7246,20 @@ const diagnosticRowStyle: CSSProperties = {
   minWidth: 0,
   width: "100%",
   display: "grid",
-  gridTemplateColumns: "4px minmax(0, 1fr)",
+  gridTemplateColumns: "3px minmax(0, 1fr)",
   gap: 10,
-  padding: "10px 10px 10px 0",
-  border: "1px solid #e3e6eb",
-  borderRadius: 8,
-  background: "#f8fafc",
+  padding: "8px 8px 8px 0",
+  border: "1px solid #e5e7eb",
+  borderRadius: 5,
+  background: "#ffffff",
   textAlign: "left",
   fontFamily: UI_FONT_FAMILY,
 };
 
 const diagnosticSeverityRailStyle: CSSProperties = {
-  width: 4,
+  width: 3,
   alignSelf: "stretch",
-  borderRadius: "8px 0 0 8px",
+  borderRadius: "5px 0 0 5px",
 };
 
 const diagnosticRowContentStyle: CSSProperties = {
