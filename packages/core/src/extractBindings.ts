@@ -159,20 +159,24 @@ function collectFromFormula(
   formula: FormulaExpression,
   add: (path: string | undefined | null) => void,
 ): void {
-  if (formula.op === "sum" || formula.op === "count") {
-    add(formula.path);
-    return;
+  switch (formula.op) {
+    case "sum":
+    case "count":
+      add(formula.path);
+      return;
+    case "concat":
+      for (const part of formula.parts) {
+        collectFromOperand(part, add);
+      }
+      return;
+    case "add":
+    case "subtract":
+    case "multiply":
+    case "divide":
+      collectFromOperand(formula.left, add);
+      collectFromOperand(formula.right, add);
+      return;
   }
-
-  if (formula.op === "concat") {
-    for (const part of formula.parts) {
-      collectFromOperand(part, add);
-    }
-    return;
-  }
-
-  collectFromOperand(formula.left, add);
-  collectFromOperand(formula.right, add);
 }
 
 function collectFromOperand(

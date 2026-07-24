@@ -24,8 +24,6 @@ export interface ValidationResult {
   issues: ValidationIssue[];
 }
 
-type AnyNode = DocNode | FlowNode;
-
 /**
  * Structurally validates a template before it is rendered or persisted. This is
  * intentionally conservative: errors mean "will not render correctly", warnings
