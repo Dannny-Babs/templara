@@ -55,6 +55,8 @@ import type {
   VariableDefinition
 } from "@templara/core";
 import type { EditorNodeItem, EditorPageModel } from "../editorModel.js";
+import { friendlyLayerLabel } from "../editorModel.js";
+import { measureDropdownFrame } from "../dropdownPosition.js";
 import type { DataExplorerField, DataExplorerModel } from "../dataExplorer.js";
 import {
   applyDataBindingToNode,
@@ -147,17 +149,18 @@ export function resolvePageInspectorDraft(uiState: InspectorUiState, pageId: str
   return {
     sizePreset: draft.sizePreset ?? "",
     linkedMargins: draft.linkedMargins ?? true,
-    showMarginGuides: draft.showMarginGuides ?? true,
-    showPrintableArea: draft.showPrintableArea ?? true,
-    pageShadow: draft.pageShadow ?? true,
-    safeAreaEnabled: draft.safeAreaEnabled ?? true,
+    // Layout aids default OFF so authors see a clean template (embedding field-test §1.14).
+    showMarginGuides: draft.showMarginGuides ?? false,
+    showPrintableArea: draft.showPrintableArea ?? false,
+    pageShadow: draft.pageShadow ?? false,
+    safeAreaEnabled: draft.safeAreaEnabled ?? false,
     safeAreaMm: draft.safeAreaMm ?? 24,
-    bleedEnabled: draft.bleedEnabled ?? true,
+    bleedEnabled: draft.bleedEnabled ?? false,
     bleedMm: draft.bleedMm ?? 3,
     backgroundColor: draft.backgroundColor ?? "#FFFFFF",
     defaultFormat: draft.defaultFormat ?? "pdf",
     dpi: draft.dpi ?? "300",
-    includeCropMarks: draft.includeCropMarks ?? true,
+    includeCropMarks: draft.includeCropMarks ?? false,
     rootObject: draft.rootObject ?? defaultRootObject(template),
     pageScope: draft.pageScope ?? "this-page",
     sampleDataSource: draft.sampleDataSource ?? "Invoice Sample Data",
@@ -1650,7 +1653,7 @@ function SampleDataSourceField({ value, onCommit }: { value: string; onCommit: (
     }),
     createElement(
       "button",
-      { type: "button", title: "Open sample data source", style: sampleDataSourceLinkStyle, onClick: () => undefined },
+      { type: "button", title: "Sample data source is Studio chrome only — hosts pass real records via the data prop", style: sampleDataSourceLinkStyle, onClick: () => undefined },
       createElement(ToolIcon, { icon: LinkSquare02Icon, size: 14 })
     )
   );
@@ -5771,6 +5774,7 @@ function Select({
     top: number;
     width: number;
     placement: "down" | "up";
+    maxHeight: number;
   } | null>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -5785,16 +5789,24 @@ function Select({
     }
 
     const rect = el.getBoundingClientRect();
-    const estimatedHeight = Math.min(280, options.length * 34 + 12);
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const placement: "down" | "up" =
-      spaceBelow < estimatedHeight + 12 && rect.top > spaceBelow ? "up" : "down";
+    const frame = measureDropdownFrame(rect, {
+      width: Math.max(rect.width, 120),
+      align: "left",
+      estimatedHeight: Math.min(280, options.length * 34 + 12),
+      gap: 6,
+      maxMenuHeight: 280,
+    });
+
+    if (!frame) {
+      return;
+    }
 
     setPos({
-      left: rect.left,
-      top: placement === "down" ? rect.bottom + 6 : rect.top - 6,
-      width: rect.width,
-      placement
+      left: frame.left,
+      top: frame.placement === "down" ? frame.top : rect.top - 6,
+      width: Math.max(frame.width, rect.width),
+      placement: frame.placement,
+      maxHeight: frame.maxHeight,
     });
   }, [options.length]);
 
@@ -5917,6 +5929,8 @@ function Select({
               top: pos.placement === "down" ? pos.top : undefined,
               bottom: pos.placement === "up" ? window.innerHeight - pos.top : undefined,
               minWidth: pos.width,
+              maxHeight: pos.maxHeight,
+              overflowY: "auto",
               zIndex: 4000
             }
           },
@@ -6321,7 +6335,7 @@ function normalizeHexColor(value: string): string {
 }
 
 function inspectorTitleForItem(item: EditorNodeItem): string {
-  return item.node.name ?? item.label ?? humanizeId(item.id);
+  return friendlyLayerLabel(item.node);
 }
 
 function inspectorIconForNode(node: EditableNode): IconSvgElement {
@@ -6346,10 +6360,6 @@ function titleCase(value: string): string {
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/[-_]/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function humanizeId(value: string): string {
-  return titleCase(value.replace(/^\d+\./, ""));
 }
 
 function bindingPathForNode(node: EditableNode): string {

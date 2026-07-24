@@ -104,6 +104,8 @@ import {
   applyDataBindingToNode,
   buildDataExplorerModel,
   createBoundTextNode,
+  defaultCollapsedDataFieldKeys,
+  filterDataExplorerGroups,
   isFieldBindableForNode,
 } from "./dataExplorer.js";
 import {
@@ -125,6 +127,23 @@ import { inferDataSchemaFromSample } from "./schemaAuthoring.js";
 import type { InsertTool } from "./shortcuts.js";
 import { resolveEditorShortcut } from "./shortcuts.js";
 import { parseInlineContent } from "./textContent.js";
+import type { HostDesignTokens } from "./hostDesignTokens.js";
+import {
+  DEFAULT_UI_FONT_FAMILY,
+  DEFAULT_UI_MONO_FONT_FAMILY,
+  DEFAULT_WORKSPACE_AIDS,
+  chromeBackground,
+  chromeContentColor,
+  chromeFontFamily,
+  hostDesignTokensToCssVars,
+  shouldShowTemplaraBrand,
+} from "./hostDesignTokens.js";
+import { filterLayerTreeRows } from "./layerTree.js";
+import {
+  anchoredDropdownStyle,
+  measureDropdownFrame,
+  type DropdownFrame,
+} from "./dropdownPosition.js";
 
 export type {
   AlignmentCommand,
@@ -134,8 +153,29 @@ export type {
 export {
   buildEditorPageModel,
   collectPageNodeItems,
+  friendlyLayerLabel,
   getAlignmentFramePatches,
 } from "./editorModel.js";
+export type { HostDesignTokens } from "./hostDesignTokens.js";
+export {
+  DEFAULT_WORKSPACE_AIDS,
+  TEMPLARA_TOKEN_VARS,
+  hostDesignTokensToCssVars,
+  shouldShowTemplaraBrand,
+} from "./hostDesignTokens.js";
+export {
+  dataFieldsFromLabelMap,
+  defaultCollapsedDataFieldKeys,
+  filterDataExplorerGroups,
+  isSystemDataPath,
+} from "./dataExplorer.js";
+export {
+  anchoredDropdownStyle,
+  measureDropdownFrame,
+} from "./dropdownPosition.js";
+export type { DropdownFrame, DropdownAlign, DropdownPlacement } from "./dropdownPosition.js";
+export { preparePreviewData } from "./previewData.js";
+export type { PreparePreviewDataOptions } from "./previewData.js";
 
 const DEFAULT_ZOOM = 0.76;
 const GRID_SIZE = 8;
@@ -149,10 +189,8 @@ const INSPECTOR_MAX_WIDTH = 640;
 const DATA_PANEL_DEFAULT_HEIGHT = 286;
 const DATA_PANEL_MIN_HEIGHT = 44;
 const DATA_PANEL_MAX_HEIGHT = 620;
-const UI_FONT_FAMILY =
-  'Geist, "Geist Sans", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-const UI_MONO_FONT_FAMILY =
-  '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+const UI_FONT_FAMILY = DEFAULT_UI_FONT_FAMILY;
+const UI_MONO_FONT_FAMILY = DEFAULT_UI_MONO_FONT_FAMILY;
 const UI_CHROME_BORDER = "#e8ecf1";
 const UI_CHROME_RADIUS = 6;
 const UI_SURFACE_SHADOW = "0 1px 2px rgba(15, 23, 42, 0.04)";
@@ -164,6 +202,11 @@ const UI_SELECTION_BG = "#f8faff";
 
 export interface DocumentEditorProps {
   value: DocumentTemplate;
+  /**
+   * Sample / preview JSON for canvas preview and data binding tools.
+   * Hosts should pass a real record context (optionally via {@link preparePreviewData})
+   * rather than synthesized placeholders when validating bindings against live data.
+   */
   data?: Record<string, unknown>;
   onChange?: (nextValue: DocumentTemplate) => void;
   onDataChange?: (nextData: Record<string, unknown>) => void;
@@ -185,6 +228,22 @@ export interface DocumentEditorProps {
    * replaces the default mark + text lockup.
    */
   brandLogo?: ReactNode;
+  /**
+   * When true, omit the default Templara wordmark/mark. Prefer for host embeds.
+   * Also inherits the host font when `hostDesignTokens.fontFamily` is omitted.
+   */
+  embedded?: boolean;
+  /**
+   * When true, omit the default Templara wordmark/mark. Standalone Studio stays
+   * branded unless this (or `embedded`) is set. Hosts may still pass `brandLogo`
+   * / `brandLogoSrc` for their own mark.
+   */
+  hideBrand?: boolean;
+  /**
+   * Optional host chrome tokens (fonts, colors, radii). Applied as CSS variables
+   * on the editor shell with Templara fallbacks. See HostDesignTokens.
+   */
+  hostDesignTokens?: HostDesignTokens;
   /**
    * Optional custom control rendered in the top toolbar next to the document
    * title (e.g. a template switcher supplied by the host app). Kept out of the
@@ -281,12 +340,6 @@ interface LayerMoveTarget {
   position: LayerDropIntent;
 }
 
-interface DropdownFrame {
-  top: number;
-  left: number;
-  width: number;
-}
-
 const sidebarIcons = {
   barcode: "/icons/sidebar-barcode.svg",
   caret: "/icons/ant-design_caret-down-filled.svg",
@@ -337,6 +390,9 @@ export function DocumentEditor({
   onActivePageChange,
   brandLogoSrc,
   brandLogo,
+  embedded = false,
+  hideBrand = false,
+  hostDesignTokens,
   toolbarAccessory,
 }: DocumentEditorProps): ReactElement {
   const [draftTemplate, setDraftTemplate] = useState<DocumentTemplate>(() =>
@@ -357,10 +413,16 @@ export function DocumentEditor({
     initialInspectorUiState,
   );
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
-  const [showGrid, setShowGrid] = useState(true);
-  const [showRulers, setShowRulers] = useState(true);
-  const [snapToGrid, setSnapToGrid] = useState(true);
-  const [snapToGuides, setSnapToGuides] = useState(true);
+  const [showGrid, setShowGrid] = useState<boolean>(DEFAULT_WORKSPACE_AIDS.showGrid);
+  const [showRulers, setShowRulers] = useState<boolean>(
+    DEFAULT_WORKSPACE_AIDS.showRulers,
+  );
+  const [snapToGrid, setSnapToGrid] = useState<boolean>(
+    DEFAULT_WORKSPACE_AIDS.snapToGrid,
+  );
+  const [snapToGuides, setSnapToGuides] = useState<boolean>(
+    DEFAULT_WORKSPACE_AIDS.snapToGuides,
+  );
   const [verticalGuides, setVerticalGuides] = useState<number[]>([]);
   const [horizontalGuides, setHorizontalGuides] = useState<number[]>([]);
   const [activeGuides, setActiveGuides] = useState<ActiveGuide[]>([]);
@@ -1641,6 +1703,7 @@ export function DocumentEditor({
     {
       style: {
         ...shellStyle,
+        ...hostDesignTokensToCssVars(hostDesignTokens, { embedded }),
         gridTemplateColumns: `60px 300px minmax(0, 1fr) ${inspectorWidth}px`,
       },
     },
@@ -1678,6 +1741,11 @@ export function DocumentEditor({
       onToggleDiagnostics: () => setDiagnosticsOpen((open) => !open),
       brandLogoSrc,
       brandLogo,
+      hideTemplaraBrand: !shouldShowTemplaraBrand({
+        embedded,
+        hideBrand,
+        brandLogo,
+      }),
       accessory: toolbarAccessory,
     }),
     createElement(ToolRail, { activeTool, onSelectTool: setActiveTool }),
@@ -2098,6 +2166,7 @@ function TopToolbar({
   onToggleDiagnostics,
   brandLogoSrc,
   brandLogo,
+  hideTemplaraBrand,
   accessory,
 }: {
   templateName: string;
@@ -2117,31 +2186,40 @@ function TopToolbar({
   onToggleDiagnostics: () => void;
   brandLogoSrc?: string;
   brandLogo?: ReactNode;
+  hideTemplaraBrand?: boolean;
   accessory?: ReactNode;
 }): ReactElement {
+  const brandNodes = brandLogo
+    ? [
+        createElement(
+          "div",
+          { key: "brand-logo", style: brandLogoSlotStyle },
+          brandLogo,
+        ),
+      ]
+    : hideTemplaraBrand
+      ? brandLogoSrc
+        ? [createElement(BrandMark, { key: "brand-mark", brandLogoSrc })]
+        : []
+      : [
+          createElement(BrandMark, { key: "brand-mark", brandLogoSrc }),
+          createElement(
+            "div",
+            { key: "brand-name", style: brandNameStyle },
+            "Templara",
+          ),
+        ];
+
   return createElement(
     "header",
     { style: topToolbarStyle },
     createElement(
       "div",
       { style: toolbarBrandGroupStyle },
-      ...(brandLogo
-        ? [
-            createElement(
-              "div",
-              { key: "brand-logo", style: brandLogoSlotStyle },
-              brandLogo,
-            ),
-          ]
-        : [
-            createElement(BrandMark, { key: "brand-mark", brandLogoSrc }),
-            createElement(
-              "div",
-              { key: "brand-name", style: brandNameStyle },
-              "Templara",
-            ),
-          ]),
-      createElement("span", { style: toolbarDividerStyle }),
+      ...brandNodes,
+      ...(brandNodes.length > 0
+        ? [createElement("span", { key: "brand-divider", style: toolbarDividerStyle })]
+        : []),
       accessory ?? createElement("div", { style: templateTitleStyle }, templateName),
       createElement("span", { style: statusPillStyle }, toolbarStatusLabel(status)),
     ),
@@ -2429,7 +2507,14 @@ function ZoomControl({
   const menuWidth = 196;
 
   const updateMenuFrame = useCallback(() => {
-    setMenuFrame(measureDropdownFrame(wrapRef.current, menuWidth, "center"));
+    const anchor = wrapRef.current?.getBoundingClientRect() ?? null;
+    setMenuFrame(
+      measureDropdownFrame(anchor, {
+        width: menuWidth,
+        align: "center",
+        estimatedHeight: 260,
+      }),
+    );
   }, []);
 
   const setPreset = (value: number): void => {
@@ -2578,7 +2663,14 @@ function PreviewDropdown({
   const menuWidth = 248;
 
   const updateMenuFrame = useCallback(() => {
-    setMenuFrame(measureDropdownFrame(wrapRef.current, menuWidth, "right"));
+    const anchor = wrapRef.current?.getBoundingClientRect() ?? null;
+    setMenuFrame(
+      measureDropdownFrame(anchor, {
+        width: menuWidth,
+        align: "right",
+        estimatedHeight: 180,
+      }),
+    );
   }, []);
 
   useEffect(() => {
@@ -3868,7 +3960,9 @@ function NodeLayerList({
   onToggleCollapse: (nodeId: string) => void;
   onMoveNode: (nodeId: string, target: LayerMoveTarget) => void;
 }): ReactElement {
-  const rows = buildLayerTreeRows(pages, activePageId, items, collapsedIds);
+  const [layerQuery, setLayerQuery] = useState("");
+  const allRows = buildLayerTreeRows(pages, activePageId, items, collapsedIds);
+  const rows = filterLayerTreeRows(allRows, layerQuery);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{
     key: string;
@@ -3923,10 +4017,27 @@ function NodeLayerList({
         "+",
       ),
     ),
+    createElement("input", {
+      type: "search",
+      value: layerQuery,
+      placeholder: "Search layers",
+      "aria-label": "Search layers",
+      onChange: (event: { currentTarget: { value: string } }) =>
+        setLayerQuery(event.currentTarget.value),
+      style: layersSearchInputStyle,
+    }),
     createElement(
       "div",
       { style: layerListStyle },
-      rows.map((row) =>
+      rows.length === 0
+        ? createElement(
+            "div",
+            { style: layersEmptyStateStyle },
+            layerQuery.trim()
+              ? "No layers match this search."
+              : "No layers on this page.",
+          )
+        : rows.map((row) =>
         createElement(LayerTreeRowView, {
           key: row.key,
           row,
@@ -4312,8 +4423,13 @@ function pageDisplayName(
   pages: DocumentTemplate["pages"],
   pageId: string,
 ): string {
-  const pageIndex = pages.findIndex((page) => page.id === pageId);
+  const page = pages.find((candidate) => candidate.id === pageId);
+  const authored = page?.name?.trim();
+  if (authored) {
+    return authored;
+  }
 
+  const pageIndex = pages.findIndex((candidate) => candidate.id === pageId);
   return `Page ${pageIndex >= 0 ? pageIndex + 1 : 1}`;
 }
 
@@ -4372,12 +4488,21 @@ function DataSchemaPanel({
   const [sampleError, setSampleError] = useState<string | null>(null);
   const [collapsedFields, setCollapsedFields] = useState<
     Record<string, boolean>
-  >({});
+  >(() => defaultCollapsedDataFieldKeys(model.groups));
+  const [collapseSeed, setCollapseSeed] = useState(() => model.allFields.length);
 
   useEffect(() => {
     setSampleDraft(JSON.stringify(data ?? {}, null, 2));
     setSampleError(null);
   }, [data]);
+
+  useEffect(() => {
+    if (model.allFields.length === collapseSeed) {
+      return;
+    }
+    setCollapsedFields(defaultCollapsedDataFieldKeys(model.groups));
+    setCollapseSeed(model.allFields.length);
+  }, [collapseSeed, model.allFields.length, model.groups]);
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleGroups = filterDataExplorerGroups(
@@ -4701,26 +4826,6 @@ function nextUniqueSchemaPath(fields: DataField[], base: string): string {
   }
 
   return candidate;
-}
-
-function filterDataExplorerGroups(
-  groups: DataExplorerGroup[],
-  query: string,
-): DataExplorerGroup[] {
-  if (!query) {
-    return groups;
-  }
-
-  return groups
-    .map((group) => ({
-      ...group,
-      fields: group.fields.filter((field) =>
-        `${field.label} ${field.path} ${field.displayPath ?? ""} ${field.kind}`
-          .toLowerCase()
-          .includes(query),
-      ),
-    }))
-    .filter((group) => group.fields.length > 0);
 }
 
 function DataExplorerGroupView({
@@ -6401,48 +6506,6 @@ function clampZoom(value: number): number {
   return Math.min(2, Math.max(0.25, Math.round(value * 100) / 100));
 }
 
-function measureDropdownFrame(
-  anchor: HTMLElement | null,
-  width: number,
-  align: "center" | "right",
-): DropdownFrame | null {
-  if (!anchor || typeof window === "undefined") {
-    return null;
-  }
-
-  const rect = anchor.getBoundingClientRect();
-  const viewportMargin = 8;
-  const preferredLeft =
-    align === "center" ? rect.left + rect.width / 2 - width / 2 : rect.right - width;
-  const maxLeft = Math.max(viewportMargin, window.innerWidth - width - viewportMargin);
-
-  return {
-    top: rect.bottom + 8,
-    left: Math.min(maxLeft, Math.max(viewportMargin, preferredLeft)),
-    width,
-  };
-}
-
-function anchoredDropdownStyle(
-  base: CSSProperties,
-  frame: DropdownFrame | null,
-): CSSProperties {
-  if (!frame) {
-    return base;
-  }
-
-  return {
-    ...base,
-    position: "fixed",
-    top: frame.top,
-    right: "auto",
-    left: frame.left,
-    width: frame.width,
-    transform: "none",
-    zIndex: 1000,
-  };
-}
-
 function roundFrameValue(value: number): number {
   return Math.round(value);
 }
@@ -6512,9 +6575,9 @@ const shellStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: `60px 300px minmax(0, 1fr) ${INSPECTOR_PANEL_WIDTH}px`,
   gridTemplateRows: "60px minmax(0, 1fr)",
-  background: "#eef2f6",
-  color: "#111827",
-  fontFamily: UI_FONT_FAMILY,
+  background: chromeBackground(),
+  color: chromeContentColor(),
+  fontFamily: chromeFontFamily(),
 };
 
 const toolRailStyle: CSSProperties = {
@@ -6895,15 +6958,15 @@ const diagnosticsDockStyle: CSSProperties = {
   right: 18,
   bottom: 18,
   zIndex: 80,
-  width: 430,
+  width: 360,
   maxWidth: "calc(100% - 36px)",
-  maxHeight: "48%",
+  maxHeight: "42%",
   display: "grid",
   gridTemplateRows: "auto minmax(0, 1fr)",
-  border: "1px solid #d8dee8",
-  borderRadius: 10,
+  border: "1px solid #e2e8f0",
+  borderRadius: 8,
   background: "#ffffff",
-  boxShadow: "0 24px 60px rgba(15, 23, 42, 0.16)",
+  boxShadow: "0 8px 24px rgba(15, 23, 42, 0.08)",
   overflow: "hidden",
 };
 
@@ -6912,23 +6975,25 @@ const diagnosticsDockHeaderStyle: CSSProperties = {
   alignItems: "flex-start",
   justifyContent: "space-between",
   gap: 14,
-  padding: "14px 14px 12px",
+  padding: "12px 14px 10px",
   borderBottom: "1px solid #eef0f3",
+  background: "#f8fafc",
 };
 
 const diagnosticsDockTitleStyle: CSSProperties = {
   margin: 0,
   color: "#0f172a",
-  fontSize: 13,
-  fontWeight: 800,
+  fontSize: 12,
+  fontWeight: 650,
+  letterSpacing: 0.01,
 };
 
 const diagnosticsDockSubtitleStyle: CSSProperties = {
   margin: "4px 0 0",
   color: "#64748b",
   fontSize: 11,
-  lineHeight: 1.35,
-  fontWeight: 550,
+  lineHeight: 1.4,
+  fontWeight: 500,
 };
 
 const diagnosticsDockCloseButtonStyle: CSSProperties = {
@@ -7386,8 +7451,8 @@ const layersHeaderStyle: CSSProperties = {
 };
 
 const layersAddButtonStyle: CSSProperties = {
-  width: 24,
-  height: 24,
+  width: 28,
+  height: 28,
   display: "grid",
   placeItems: "center",
   border: "1px solid transparent",
@@ -7398,8 +7463,29 @@ const layersAddButtonStyle: CSSProperties = {
   cursor: "pointer",
 };
 
+const layersSearchInputStyle: CSSProperties = {
+  width: "calc(100% - 16px)",
+  margin: "8px 8px 0",
+  height: 30,
+  boxSizing: "border-box",
+  border: "1px solid #e5e7eb",
+  borderRadius: 6,
+  background: "#ffffff",
+  color: "#111827",
+  padding: "0 10px",
+  font: `500 12px/1.2 ${UI_FONT_FAMILY}`,
+  outline: "none",
+};
+
+const layersEmptyStateStyle: CSSProperties = {
+  padding: "18px 10px",
+  color: "#94a3b8",
+  font: `500 12px/1.4 ${UI_FONT_FAMILY}`,
+  textAlign: "center",
+};
+
 const layerListStyle: CSSProperties = {
-  height: "calc(100% - 42px)",
+  height: "calc(100% - 80px)",
   minHeight: 0,
   overflowY: "auto",
   padding: "6px 8px 14px",
@@ -7421,9 +7507,9 @@ const layerButtonStyle: CSSProperties = {
 const layerTreeRowStyle: CSSProperties = {
   position: "relative",
   width: "100%",
-  height: 28,
+  height: 32,
   display: "grid",
-  gridTemplateColumns: "14px 18px minmax(0, 1fr)",
+  gridTemplateColumns: "16px 24px minmax(0, 1fr)",
   alignItems: "center",
   gap: 6,
   border: "1px solid transparent",
@@ -7448,8 +7534,8 @@ const layerTreeCaretButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  width: 18,
-  height: 18,
+  width: 24,
+  height: 24,
   borderRadius: 4,
   cursor: "pointer",
   color: "#667085",

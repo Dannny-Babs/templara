@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import type { DocumentTemplate, GridNode, ImageNode, RepeatNode, TextNode } from "@templara/core";
 import { collectPageNodeItems } from "./editorModel";
 import {
   applyDataBindingToNode,
   buildDataExplorerModel,
   createBoundTextNode,
+  dataFieldsFromLabelMap,
+  defaultCollapsedDataFieldKeys,
+  filterDataExplorerGroups,
   isFieldBindableForNode,
+  isSystemDataPath,
   resolveSelectedDataScope
 } from "./dataExplorer";
 
@@ -275,5 +280,127 @@ describe("data binding helpers", () => {
     expect(isFieldBindableForNode(arrayField, repeat)).toBe(true);
     expect(isFieldBindableForNode(arrayField, text)).toBe(false);
     expect(isFieldBindableForNode(primitiveField, text)).toBe(true);
+  });
+});
+
+describe("large schema browse helpers", () => {
+  it("hides $-prefixed system fields by default", () => {
+    const template: DocumentTemplate = {
+      id: "system-fields",
+      version: "0.0.1",
+      unit: "px",
+      pages: [{ id: "page-1", size: { width: 100, height: 100 }, layers: [] }],
+      dataSchema: {
+        fields: [
+          {
+            path: "record",
+            label: "Record",
+            kind: "object",
+            children: [
+              { path: "$id", label: "System id", kind: "string" },
+              { path: "fullId", label: "Full ID", kind: "string" },
+              {
+                path: "connectedLegs",
+                label: "Legs",
+                kind: "object",
+                children: [
+                  { path: "$createdAt", label: "Created", kind: "string" },
+                  { path: "name", label: "Leg name", kind: "string" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    const hidden = buildDataExplorerModel({ template });
+    expect(hidden.allFields.some((field) => field.path.includes("$"))).toBe(false);
+    expect(hidden.allFields.map((field) => field.path)).toEqual(
+      expect.arrayContaining([
+        "record",
+        "record.fullId",
+        "record.connectedLegs",
+        "record.connectedLegs.name",
+      ]),
+    );
+
+    const shown = buildDataExplorerModel({ template, hideSystemFields: false });
+    expect(shown.allFields.some((field) => field.path.endsWith("$id"))).toBe(true);
+  });
+
+  it("keeps ancestor rows when searching nested fields", () => {
+    const template: DocumentTemplate = {
+      id: "search-ancestors",
+      version: "0.0.1",
+      unit: "px",
+      pages: [{ id: "page-1", size: { width: 100, height: 100 }, layers: [] }],
+      dataSchema: {
+        fields: [
+          {
+            path: "record",
+            label: "Record",
+            kind: "object",
+            children: [
+              {
+                path: "connectedLegs",
+                label: "Legs",
+                kind: "object",
+                children: [
+                  { path: "originPostalCode", label: "Origin postal", kind: "string" },
+                  { path: "name", label: "Leg name", kind: "string" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    const model = buildDataExplorerModel({ template });
+    const filtered = filterDataExplorerGroups(model.groups, "postal");
+    const paths = filtered[0]?.fields.map((field) => field.path) ?? [];
+
+    expect(paths).toEqual([
+      "record",
+      "record.connectedLegs",
+      "record.connectedLegs.originPostalCode",
+    ]);
+  });
+
+  it("loads the truncated order-schema fixture into a searchable model", () => {
+    const samplePath = new URL(
+      "../../../docs/fixtures/order-schema-sample.json",
+      import.meta.url,
+    );
+    const sample = JSON.parse(
+      readFileSync(samplePath, "utf8"),
+    ) as Record<string, unknown>;
+    const fields = dataFieldsFromLabelMap(sample);
+    const template: DocumentTemplate = {
+      id: "order-schema-sample",
+      version: "0.0.1",
+      unit: "px",
+      pages: [{ id: "page-1", size: { width: 100, height: 100 }, layers: [] }],
+      dataSchema: { fields },
+    };
+
+    const started = performance.now();
+    const model = buildDataExplorerModel({ template });
+    const filtered = filterDataExplorerGroups(model.groups, "postal");
+    const elapsed = performance.now() - started;
+
+    expect(model.allFields.length).toBeGreaterThan(40);
+    expect(model.allFields.some((field) => isSystemDataPath(field.path))).toBe(
+      false,
+    );
+    expect(filtered[0]?.fields.some((field) => /postal/i.test(field.path))).toBe(
+      true,
+    );
+    expect(Object.keys(defaultCollapsedDataFieldKeys(model.groups)).length).toBeGreaterThan(
+      0,
+    );
+    // Browse + search against the fixture should stay interactive on CI.
+    expect(elapsed).toBeLessThan(250);
   });
 });

@@ -1,7 +1,9 @@
 ### TASK D1 — Doc-type registry parity (host)
-**Status:** ready (Wave 4)  
+**Status:** ready (Wave 5 host execution; Templara ticket/spec only — no fake registry in this repo)  
 **Stream:** D — Doc-type registry   **Depends on:** A2, B1   **Model tier:** mid  
-**Branch:** `feat/doctype-registry-parity` (off Wave 4 integration)
+**Branch:** `feat/doctype-registry-parity` (host repo; not implemented in Templara)
+
+**Templara Wave 5 note:** Still **host-owned**. This monorepo keeps the contract ticket only. Do not invent `RDocumentTypeConfig` runtime or platform-model POSTs here.
 
 **Context (why):**  
 Doc Builder 1 registers generators via `RDocumentTypeConfig` keyed by `objectKey`; attach/merge/sign/email consume **PDF bytes** ([P7](../../discovery/P7-document-process-integration.md)). Templara must show up in the same process without inventing a parallel registry in this repo.
