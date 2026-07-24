@@ -273,7 +273,7 @@ describe("extractBindings", () => {
     ]);
   });
 
-  it("collects grid binding and staticRows cell field paths", () => {
+  it("collects bound grid paths from row (and header/footer), not unused staticRows", () => {
     const grid: GridNode = {
       id: "grid",
       type: "grid",
@@ -281,6 +281,24 @@ describe("extractBindings", () => {
       binding: { path: "invoice.charges" },
       columns: [{ id: "c1", width: 200 }],
       rowHeight: 24,
+      header: {
+        cells: [
+          {
+            columnId: "c1",
+            content: [
+              {
+                id: "header-cell",
+                type: "text",
+                frame,
+                content: [
+                  { kind: "field", label: "Hdr", binding: { path: "invoice.headerLabel" } },
+                ],
+                style: textStyle,
+              },
+            ],
+          },
+        ],
+      },
       row: {
         cells: [
           {
@@ -292,6 +310,24 @@ describe("extractBindings", () => {
                 frame,
                 content: [
                   { kind: "field", label: "Amt", binding: { path: "charge.amount" } },
+                ],
+                style: textStyle,
+              },
+            ],
+          },
+        ],
+      },
+      footer: {
+        cells: [
+          {
+            columnId: "c1",
+            content: [
+              {
+                id: "footer-cell",
+                type: "text",
+                frame,
+                content: [
+                  { kind: "field", label: "Tot", binding: { path: "invoice.footerTotal" } },
                 ],
                 style: textStyle,
               },
@@ -328,8 +364,51 @@ describe("extractBindings", () => {
     expect(extractBindings(withNodes(grid))).toEqual([
       "charge.amount",
       "invoice.charges",
-      "invoice.taxLabel",
+      "invoice.footerTotal",
+      "invoice.headerLabel",
     ]);
+  });
+
+  it("collects unbound grid paths from staticRows without double-counting row alias", () => {
+    const sharedCell: TextNode = {
+      id: "shared-cell",
+      type: "text",
+      frame,
+      content: [{ kind: "field", label: "A", binding: { path: "invoice.rowA" } }],
+      style: textStyle,
+    };
+    const aliasedRow = {
+      cells: [{ columnId: "c1", content: [sharedCell] }],
+    };
+    const secondRow = {
+      cells: [
+        {
+          columnId: "c1",
+          content: [
+            {
+              id: "second-cell",
+              type: "text" as const,
+              frame,
+              content: [
+                { kind: "field" as const, label: "B", binding: { path: "invoice.rowB" } },
+              ],
+              style: textStyle,
+            },
+          ],
+        },
+      ],
+    };
+    const grid: GridNode = {
+      id: "grid",
+      type: "grid",
+      frame: { x: 0, y: 0, width: 400, height: 200 },
+      columns: [{ id: "c1", width: 200 }],
+      rowHeight: 24,
+      row: aliasedRow,
+      staticRows: [aliasedRow, secondRow],
+    };
+
+    expect(extractBindings(withNodes(grid))).toEqual(["invoice.rowA", "invoice.rowB"]);
   });
 
   it("skips empty binding paths", () => {

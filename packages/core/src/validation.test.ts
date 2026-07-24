@@ -89,6 +89,35 @@ describe("validateTemplate", () => {
     expect(result.errors.some((issue) => issue.code === "node.duplicate_id")).toBe(true);
   });
 
+  it("does not flag duplicate ids when grid.row aliases staticRows[0]", () => {
+    const cellNode = {
+      id: "cell-text",
+      type: "text" as const,
+      frame: { x: 0, y: 0, width: 100, height: 20 },
+      content: [{ kind: "text" as const, text: "A" }],
+      style: { fontFamily: "Geist", fontSize: 12 },
+    };
+    const aliasedRow = {
+      cells: [{ columnId: "c1", content: [cellNode] }],
+    };
+    const template = baseTemplate();
+    template.pages[0].layers[0].nodes = [
+      {
+        id: "grid",
+        type: "grid",
+        frame: { x: 0, y: 0, width: 400, height: 200 },
+        columns: [{ id: "c1", width: 200 }],
+        rowHeight: 24,
+        row: aliasedRow,
+        staticRows: [aliasedRow],
+      },
+    ];
+
+    const result = validateTemplate(template);
+    expect(result.errors.some((issue) => issue.code === "node.duplicate_id")).toBe(false);
+    expect(result.valid).toBe(true);
+  });
+
   it("warns on empty text field bindings", () => {
     const template = baseTemplate();
     template.pages[0].layers[0].nodes[0] = {
