@@ -1,8 +1,8 @@
 # Orchestration tickets — index
 
-**Integration branch:** `integration/rr-doc-builder-2-wave5`  
+**Integration branch:** `integration/rr-doc-builder-2-wave6`  
 **Plan:** [orchestration-plan.md](../../orchestration-plan.md) §6 template / §9–10 streams  
-**Wave:** Wave 5 (F3–F5, A3 Templara seam; D1/B2/H1 host-owned). Waves 1–3 merged to `main` (PRs #2–#5). Wave 4 on `integration/rr-doc-builder-2-wave4` (E1/F1).
+**Wave:** Wave 6 (F6 preview chrome, left-panel resize, host guide). Waves 1–3 merged to `main` (PRs #2–#5). Wave 4/5 open as PRs #7/#6 — see [pr-titles.md](../pr-titles.md). Host wiring: [host-integration-guide.md](../host-integration-guide.md).
 
 ## Dependency graph
 
@@ -76,6 +76,7 @@ Rough order: Waves 1–4 done (or Wave 4 branch) → Wave 5 **F3/F4/F5/A3 (Templ
 | [F3](F3-dropdown-overflow.md) | Dropdown / popover overflow + sizing | F | F1 | done | `integration/rr-doc-builder-2-wave5` |
 | [F4](F4-readable-layer-names.md) | Human-readable layer names | F | F1 | done | `integration/rr-doc-builder-2-wave5` |
 | [F5](F5-large-schema-data-panel.md) | Large schema / data panel search & scale | F | F1 | done | `integration/rr-doc-builder-2-wave5` |
+| [F6](F6-preview-button-chrome.md) | Preview button chrome (no eye icon) | F | F1 | done | `integration/rr-doc-builder-2-wave6` |
 
 **Status values:** `ready` · `in_progress` · `blocked` · `done` · `backlog`
 
