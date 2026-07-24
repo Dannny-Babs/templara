@@ -1,0 +1,104 @@
+---
+title: Tour of the Interface
+description: Every panel, button, and region of the Templara editor explained in plain language.
+---
+
+The editor has a lot on screen. This page names every region and tells you **what it does** and **what it shows you**. Skim it once, then come back whenever you're unsure what something is.
+
+![The full Templara editor: tool rail on the left, layers and data panels beside it, the document canvas in the center, the inspector on the right, and the toolbar across the top.](/user-guide/editor-overview.png)
+
+Think of the editor as five zones:
+
+1. The **canvas** in the middle (your document)
+2. The **insert tool rail** on the far left (add things)
+3. The **side panels** (manage layers, data, pages)
+4. The **top toolbar** (save, undo, project menu)
+5. The **right inspector** (change the selected thing)
+6. The **bottom docks** (zoom, pages, preview, diagnostics)
+
+## 1. The canvas (the page in the middle)
+
+The white sheet in the center **is your document**. This is where you place and arrange everything.
+
+- It shows **one page at a time** — the page you're currently editing.
+- It shows your design with **placeholders** (like `{{customer.name}}`), not final data.
+- Faint lines you may see are helpers: **rulers**, a **grid**, **margins**, and **guides**. They help you line things up and never appear in the final document. You can turn them on and off (see [Canvas & pages](/docs/user-guide/canvas-and-pages)).
+
+## 2. The insert tool rail (far-left icons)
+
+A vertical strip of icons. This is how you **add new things** to the page. Click a tool, then click on the canvas to place it. Each tool also has a **keyboard shortcut** (the letter in parentheses).
+
+| Icon | Tool | What it adds |
+| --- | --- | --- |
+| ➤ | **Select (V)** | The normal arrow. Click things to select and move them. |
+| T | **Text (T)** | A text box (plain words or data placeholders). |
+| 🖼 | **Image (I)** | A picture, such as a logo. |
+| ▭ | **Rectangle (R)** | A filled or outlined box. |
+| ／ | **Line (L)** | A straight line or divider. |
+| ◯ | **Shape (O)** | A shape like a circle. |
+| ▮▮ | **Barcode (B)** | A scannable barcode. |
+| ▦ | **QR Code (Q)** | A scannable QR code. |
+| ▤ | **Table (G)** | A table/grid with rows and columns. |
+| ⟳ | **Repeat (E)** | A section that repeats once per data row (e.g. invoice line items). |
+| ❓ | **Condition (C)** | A section that only appears when a rule is true. |
+| ▢ | **Frame (F)** | A container to group things inside. |
+| ✍ | **Signature (S)** | A signature area. |
+
+> Press **Esc** at any time to snap back to the **Select** tool.
+
+Details on each are in [Adding elements](/docs/user-guide/adding-elements).
+
+## 3. The side panels
+
+Alongside the canvas you'll find these panels:
+
+### Insert panel
+Quick-start building blocks you can drop in whole — like a **Company header**, **Address block**, **Line items table**, **Totals block**, **Signature block**, or **Barcode / QR block**. Faster than building from scratch.
+
+### Pages panel
+Lists the pages in your document and lets you manage them. It shows how many pages you have.
+
+### Layers panel
+A list of **everything on the current page**, stacked like a checklist (for example "Invoice Header Band", "Bill To Label"). Selecting a layer here selects it on the canvas, and vice-versa. You can add layers, reorder them, and group them. See [Layers & inspector](/docs/user-guide/layers-and-inspector).
+
+### Data panel
+The panel where you manage the **sample data** and **search for fields** to connect to your document. It has a search box, an **Edit sample data JSON** button, and an **Infer schema** button. This is the heart of connecting data — covered fully in [Connecting data](/docs/user-guide/binding-data).
+
+## 4. The top toolbar
+
+Across the top you'll find:
+
+- **Document title & status** — your document's name, and whether it's **Saved** or has **Unsaved** changes.
+- **Undo / Redo** — step backward or forward through your edits.
+- **Copy template JSON** — copies the raw template (advanced/technical use).
+- **Save** — saves the document.
+- **Dashboard** — returns you to the home screen.
+- **Project menu** — Save, Rename, Duplicate, Export/Import, Delete, switch projects, or start a new one from a template.
+
+## 5. The right inspector
+
+The **inspector** on the right is **context-sensitive** — it changes depending on what you've selected:
+
+- Select **nothing** → it shows **page settings** (size, margins, guides).
+- Select **a text box** → it shows font, size, color, alignment, and its data binding.
+- Select **a table or repeat** → it shows row/column and data options.
+
+In short: **click a thing, then use the right panel to change that thing.** Full details in [Layers & inspector](/docs/user-guide/layers-and-inspector).
+
+## 6. The bottom docks
+
+Along the bottom edge:
+
+- **Bottom-left — Zoom / canvas controls:** zoom in and out, type a zoom level, or pick presets like **Fit page**, **50%**, **100%**, **150%**. Also where you toggle rulers, grid snapping, and guide snapping.
+- **Bottom-center — Page switcher:** jump between pages when your document has more than one.
+- **Bottom-right — Preview:** the **Preview** button opens the finished-document view. Its dropdown offers **Preview (sample data)**, **Preview with large data**, and **Export PDF**.
+- **Diagnostics badge:** a status badge that opens the **Diagnostics** panel — a list of problems grouped into **Blocking**, **Warnings**, and **Info**. See [Diagnostics](/docs/user-guide/diagnostics).
+
+## What's next
+
+<Cards>
+  <Card title="Adding elements" href="/docs/user-guide/adding-elements" />
+  <Card title="Connecting data" href="/docs/user-guide/binding-data" />
+  <Card title="Layers & inspector" href="/docs/user-guide/layers-and-inspector" />
+  <Card title="Keyboard shortcuts" href="/docs/user-guide/keyboard-shortcuts" />
+</Cards>

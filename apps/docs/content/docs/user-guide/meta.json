@@ -1,0 +1,16 @@
+{
+  "title": "User Guide",
+  "pages": [
+    "overview",
+    "your-first-document",
+    "the-interface",
+    "adding-elements",
+    "binding-data",
+    "layers-and-inspector",
+    "canvas-and-pages",
+    "preview-and-export",
+    "diagnostics",
+    "keyboard-shortcuts",
+    "faq"
+  ]
+}

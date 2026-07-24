@@ -1,0 +1,107 @@
+---
+title: FAQ & Troubleshooting
+description: Plain answers to the questions people actually ask when they first use Templara.
+---
+
+Real questions, direct answers. If you're stuck, scan this list first.
+
+## Getting started
+
+**What even is this thing?**
+A tool to design a document layout once and fill it with data automatically. See [What is Templara?](/docs/user-guide/overview).
+
+**Do I need to know how to code?**
+No. You design visually. Coding only matters for the developers embedding Templara into a product.
+
+**Where do I start?**
+Open a starter template (Invoice is a good first pick) from the dashboard. See [Your first document](/docs/user-guide/your-first-document).
+
+**Will I ruin the original template if I edit it?**
+No. Picking a template creates your own **separate** copy to edit.
+
+## Designing
+
+**How do I add something to the page?**
+Pick a tool from the far-left rail, then click the canvas. See [Adding elements](/docs/user-guide/adding-elements).
+
+**How do I move or resize something?**
+Select it (Select tool), then drag it or drag its handles. Arrow keys nudge it; **Shift + arrows** move it further.
+
+**How do I delete something?**
+Select it and press **Delete** or **Backspace**.
+
+**How do I undo a mistake?**
+**Cmd/Ctrl + Z**. Redo with **Cmd/Ctrl + Shift + Z**.
+
+**How do I line things up neatly?**
+Use the grid, guides, and snapping. See [Canvas & pages](/docs/user-guide/canvas-and-pages).
+
+**Two things overlap and I can't click the one I want.**
+Select it from the **Layers** panel instead of the canvas. See [Layers & inspector](/docs/user-guide/layers-and-inspector).
+
+**I selected something but the settings panel isn't showing what I expect.**
+The right **Inspector** always reflects the current selection. Click the specific element again, or click empty space to see page settings.
+
+## Data
+
+**How do I make a box show real information?**
+Bind it to a data field from the **Data panel**. See [Connecting data](/docs/user-guide/binding-data).
+
+**What is "sample data"?**
+Example values used only for designing and previewing. Real records come from the product Templara is embedded in.
+
+**There are thousands of fields — how do I find anything?**
+Use the **search box** in the Data panel. Type part of the field name (e.g. "total", "address").
+
+**My value shows up as `[object Object]` or raw code.**
+You bound to a container instead of a final value. Search for the more specific field (often a "formatted" version).
+
+**A placeholder like `{{something}}` is showing in the preview.**
+That field isn't present in the data. Check the field name and bind to one that exists.
+
+**How do I make a list (like invoice line items)?**
+Use a **Repeat** (or a table with bound columns) connected to a list field. You design one row; the preview shows them all.
+
+**How do I hide something when there's no data for it?**
+Wrap it in a **Condition** so it only appears when its rule is true.
+
+## Preview & output
+
+**Why does the preview look different from what I designed?**
+Because the editor shows the reusable **template** (placeholders, one row) and the preview shows the finished **document** (real values, all rows, extra pages). This is intended — see [Preview & export](/docs/user-guide/preview-and-export).
+
+**Why do I have extra pages in the preview I didn't create?**
+Long content flows onto additional pages automatically. That's Templara paginating for you.
+
+**How do I get a PDF?**
+Preview dropdown → **Export PDF**. Clear any **Blocking** diagnostics first.
+
+**What are the red/yellow items in Diagnostics?**
+Problems (red = **Blocking**, must fix) and cautions (yellow = **Warnings**). See [Diagnostics](/docs/user-guide/diagnostics).
+
+## Saving & projects
+
+**Where are my projects saved?**
+In your browser, automatically. Use **Save project** in the Project menu to save on purpose.
+
+**Will I lose my work if I close the tab?**
+Saved projects persist in the browser, but clearing browser data can remove them. **Export** important projects as a `.templara.json` file to keep a safe copy.
+
+**How do I rename, duplicate, or delete a project?**
+All in the **Project** menu in the top toolbar.
+
+## Known rough edges (we're on it)
+
+These are real, we know about them, and they're being improved:
+
+- **Very large field lists** can feel overwhelming (use search for now).
+- **The Preview button and some dropdowns** are getting a visual and behavior cleanup.
+- **Diagnostics styling** is being polished (the information is accurate today).
+
+## Still stuck?
+
+<Cards>
+  <Card title="Start from the overview" href="/docs/user-guide/overview" />
+  <Card title="Tour of the interface" href="/docs/user-guide/the-interface" />
+  <Card title="Connecting data" href="/docs/user-guide/binding-data" />
+</Cards>

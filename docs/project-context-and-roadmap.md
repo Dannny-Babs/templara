@@ -78,6 +78,37 @@ That means:
 
 This separation is now implemented in the editor architecture.
 
+### Server PDF: Headless Browser + React Renderer (Q4)
+
+**Status:** Decided — capture for docs / Rose Rocket integration plan. Not implemented in this repo yet.
+
+**Fact (confirmed in packages):**
+
+- Source of truth is Template JSON.
+- `@templara/renderer` is Node-safe and emits a **render tree** (`RenderDocumentResult`) only — no HTML string, no `renderToString`, no SSR helpers.
+- Markup/pixels exist only after `@templara/react-renderer` paints that tree into a DOM.
+- `@templara/pdf` clones already-painted preview DOM and calls browser `print()`; it does not re-render.
+
+So there is no “JSON → static HTML string → feed Chrome” bridge. Server-hosted PDF requires a browser that runs `@templara/react-renderer`. That is a fidelity win: preview and PDF use the same painter by construction.
+
+**Decision — A′ (preferred over B):**
+
+| Option | Where headless Chrome + `@templara/react-renderer` + print lives |
+| --- | --- |
+| **A′** | Teach `document-generator` a Templara-JSON mode (reuse existing Chrome). Endpoint serves a page that mounts `@templara/react-renderer`, injects `{templateJson, data}`, waits for paint, prints (`margin:0` / `preferCSSPageSize` / `printBackground`). |
+| **B** | Run Puppeteer/Chromium inside `platform-model` instead. Full control, but a second Chromium ownership workstream. |
+
+**Plan primitive:** `POST` Templara JSON + context → doc-gen Templara route → PDF. Not an in-`platform-model` Node HTML render, and not a Handlebars/`templateData` string bridge.
+
+**Docs follow-up:** Fold this into architecture / export docs when the integration plan is rewritten around A′.
+
+**Update (Jul 24, 2026) — refined by discovery to A′-lite.** The read-only discovery run (see [discovery/00-DISCOVERY-REPORT.md](discovery/00-DISCOVERY-REPORT.md)) changed the recommended first step:
+
+- `document-generator` is an **external, out-of-repo microservice** (image-only; source not on disk). `platform-model` POSTs `{ templateData, context, options }` to `POST /api/v1/docs/platform/{id}[/pdf|/preview]` (Bearer auth). Its internals — Puppeteer print config, print CSS, fonts, and the pre-print asset-wait strategy — are a **black box** and are the top fidelity risk.
+- Because of that, full A′ (mount `@templara/react-renderer` inside the service's Chrome) is blocked on three service-internal unknowns: static bundle hosting, a render-complete readiness hook, and CSP.
+- **Recommended lowest-risk first step: A′-lite** — SSR the Templara React tree to an **HTML string** (in `platform-model` or a thin shared renderer lib) and POST that HTML to the **existing `generate-document` print path**. Zero service changes; reuses the proven Chrome print engine, pagination, page numbers, Letter sizing, and the permission-gated controller surface. This *does* require a Node-safe HTML serialization path for Templara — which does not exist today (see the Fact above) — so **"add an SSR-to-HTML entrypoint" becomes a concrete Templara work item**, distinct from the earlier "no Node HTML path" framing.
+- Other confirmed seams a JSON engine must satisfy: fit JSON into the `@RText templateData` string (or new field + bump hidden `dataFormatVersion`), reuse the **path-driven `buildRecordContext`** (add a `record.*` path extractor from Templara JSON), honor the **pre-formatted money/date suffix leaves**, register via `RDocumentTypeConfig` (keyed by `objectKey`), and ultimately return **PDF bytes** for attach/merge/sign/email. Design tokens are **Zinnia CSS vars on `:root`** (good for inheritance); inline generated imagery as base64.
+
 ## Repository Created
 
 Current repo:
@@ -419,3 +450,49 @@ Recommended next order:
 8. Add template validation and migration scaffolding in `@templara/core`.
 
 The next best practical step is resize handles plus keyboard editing operations, because they move the editor from a template viewer/editor into a real design tool.
+
+## Docs & Onboarding Follow-ups
+
+**Status:** Added Jul 24, 2026. A beginner-facing **User Guide** now exists in the docs site (`apps/docs/content/docs/user-guide/`, 11 pages: overview, your-first-document, the-interface, adding-elements, binding-data, layers-and-inspector, canvas-and-pages, preview-and-export, diagnostics, keyboard-shortcuts, faq). Three real Studio screenshots are captured and embedded (`apps/docs/public/user-guide/`): dashboard, editor overview, preview dropdown.
+
+Remaining (do later):
+
+- **Capture the remaining 8 screenshots** and replace the `📷 Screenshot needed` placeholders. Needed states: Data panel close-up; binding a field to a text node; Layers panel with a selection; inspector for a selected text element; Diagnostics badge + open dock; bottom-left zoom dock with presets open; Text-tool placement on canvas; editor↔preview side-by-side. Pipeline is proven: run `pnpm studio`, drive the browser, save into `apps/docs/public/user-guide/`.
+- **Establish a repeatable screenshot workflow** (fixed viewport size + naming) so guide images can be refreshed after UI changes without drift.
+- **Add screenshot annotations/callouts** (numbered markers) for the interface tour.
+- Revisit once the field-test issues in [embedding-field-test-issues.md](embedding-field-test-issues.md) are addressed, since several (dropdowns, preview button, diagnostics visual, layer names in embedded mode) change what the screenshots should show.
+
+## Execution Approach (how we'll run the work)
+
+**Status:** Agreed direction, Jul 24, 2026. Not started — captured so we work this way once building begins.
+
+> The full operating spec — roles, model tiering (high-thinking Planner + cheap Executors + separate Verifier), per-task lifecycle, branch-per-task parallelism, verification gates, the task-ticket template, conventional-commit rules, and the first-cut workstream/dependency graph — lives in **[orchestration-plan.md](orchestration-plan.md)**. The notes below are the rationale that shaped it.
+
+### Stress Review Of This Approach
+
+The swarm model is useful only if the work is decomposed around stable contracts. Without that, multiple agents can produce incompatible partial solutions: one branch changes the binding model, another changes the preview contract, and a third builds UI against assumptions neither branch keeps. The operating rule is therefore: **contract first, branch second**.
+
+The "web-search best practices" step is useful for external implementation patterns, but it cannot be the source of truth for Rose Rocket behavior. Internal repo discovery wins over blogs, package READMEs, and generic architecture advice. Web research should answer "what is a good modern way to implement this class of thing?" Discovery should answer "what does this product actually do today?"
+
+"Strong evals" also needs to mean named, repeatable checks, not vibes. Each task must define the fixture, the expected behavior, and the regression it prevents before code starts. If a branch cannot name its evals, it is still in discovery/planning.
+
+### Operating Model
+
+- **Discovery before build.** Run the relevant prompts in [discovery-prompts.md](discovery-prompts.md) and bring back evidence before opening implementation branches. Do not build from the raw issue log alone.
+- **One integration owner branch.** Keep a single coordination branch that owns contracts, shared types, fixture names, and merge order. Feature branches merge into that branch after review; they do not merge directly into `main`.
+- **Swarm of agents across scoped branches.** Break the work into independent chunks and run parallel agents only after the shared contract is written. Each branch gets one outcome, one owner, and one acceptance checklist.
+- **Detailed plan per task.** Every task starts with a written plan covering scope, target files/packages, public/internal API changes, fixtures, evals, rollback path, and what it explicitly will not touch.
+- **Best-practice research with source ranking.** Use current web research for external practices such as headless Chrome PDF readiness, large-tree React performance, schema browsers, and embedded theming. Rank evidence in this order: host repo code and fixtures, Templara package behavior, official docs, then general articles.
+- **Contract tests before UI polish.** The first green checks should prove binding extraction, context hydration, real-record preview, server render handoff, and schema scaling. UI polish branches should not proceed until those contracts hold.
+- **Strong evals gate each task.** A task is done only when its named evals pass. Minimum eval classes are unit tests, fixture/golden tests, browser verification where UI is involved, and performance checks for large schema/layer trees.
+- **Merge discipline.** No branch may silently change renderer semantics, public package APIs, template schema, or server-render contracts. Those changes require an architecture note plus migration/test coverage.
+- **Security and data hygiene.** Fixtures that come from real records must be scrubbed or explicitly marked safe. Do not introduce raw JavaScript evaluation, unsafe HTML injection, or unauthenticated asset fetching as shortcuts.
+- **Priority remains fixed.** Data-binding + real-record preview first, then server PDF, registration/process integration, schema depth, value adapters, package docs/fixtures, and embedded theming (see [embedding-field-test-issues.md](embedding-field-test-issues.md) §8 and [rose-rocket-integration-retrospective.md](rose-rocket-integration-retrospective.md) §6).
+
+### First Branches When Work Starts
+
+1. `integration/discovery-context-builder`: run P3/P4, document exact path extraction and context hydration behavior, and save a real invoice chain fixture.
+2. `integration/binding-path-extractor-contract`: define and test a Templara JSON binding extractor without changing editor UI.
+3. `integration/real-record-preview-contract`: prove a real record can hydrate the extracted paths and render through existing preview with no placeholder data.
+4. `integration/server-render-a-prime-spike`: verify whether `document-generator` can host the React renderer page and wait for a render-complete signal.
+5. `integration/embedded-theming-contract`: define the host token/font/branding interface, with Templara branding disabled by default when embedded.

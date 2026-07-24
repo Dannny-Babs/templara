@@ -1,0 +1,62 @@
+---
+title: Preview & Export
+description: See the finished document with real data, and turn it into a PDF.
+---
+
+Designing is only half the job — you need to see the **finished** result and get it out as a file. That's preview and export.
+
+## Preview: the finished document
+
+The **Preview** button (bottom-right) opens a full-screen view of your document **as it will actually look**, with:
+
+- real values filled in (no more `{{placeholders}}`),
+- every repeat row expanded,
+- content split across pages correctly.
+
+![The Preview button in the top-right of the editor, with its dropdown open showing Preview (sample data), Preview with large data, and Export PDF.](/user-guide/preview-dropdown.png)
+
+Click the Preview dropdown to choose:
+
+- **Preview (sample data)** — uses your project's sample data. This is the normal choice.
+- **Preview with large data** — stress-tests your layout with a bigger dataset, so you can see how it behaves when a list is long and spills onto multiple pages. Great for catching layout problems before they reach real customers.
+
+Close the preview to return to editing.
+
+### Why preview looks different from the editor
+
+This is expected and important:
+
+| Editor (design) | Preview (result) |
+| --- | --- |
+| Shows placeholders like `{{total}}` | Shows real values like `4,590.00 USD` |
+| Shows **one** repeat row | Shows **all** rows |
+| Always one page | Splits onto extra pages as needed |
+
+If you've read the [overview](/docs/user-guide/overview), this is the "editor is not the renderer" idea. The preview is the source of truth for what your document becomes.
+
+## Export to PDF
+
+From the same Preview dropdown, choose **Export PDF** to save the finished document as a PDF file.
+
+The **Export PDF** option lives in that same Preview dropdown shown above.
+
+A few things to know:
+
+- Export works from the **finished preview**, so what you see in preview is what you get in the PDF.
+- **Fix blocking problems first.** If [Diagnostics](/docs/user-guide/diagnostics) shows blocking issues, resolve them before exporting so the output is correct.
+- Fonts and images in your design are included in the PDF.
+
+## A good pre-export checklist
+
+1. Open **Preview (sample data)** and read it top to bottom.
+2. Open **Preview with large data** to confirm long lists paginate cleanly.
+3. Check the **Diagnostics** badge — clear any **Blocking** items.
+4. **Export PDF**.
+
+## What's next
+
+<Cards>
+  <Card title="Diagnostics" href="/docs/user-guide/diagnostics" />
+  <Card title="Connecting data" href="/docs/user-guide/binding-data" />
+  <Card title="FAQ" href="/docs/user-guide/faq" />
+</Cards>
