@@ -138,6 +138,14 @@ describe("extractBindings", () => {
           },
         },
         {
+          id: "line-count",
+          name: "Line count",
+          value: {
+            kind: "formula",
+            formula: { op: "count", path: "invoice.lineItems" },
+          },
+        },
+        {
           id: "label",
           name: "Label",
           value: {
@@ -161,8 +169,73 @@ describe("extractBindings", () => {
 
     expect(extractBindings(template)).toEqual([
       "invoice.currency",
+      "invoice.lineItems",
       "invoice.lineItems.amount",
       "invoice.notes",
+    ]);
+  });
+
+  it("collects arithmetic formula left/right path operands", () => {
+    const template = emptyTemplate({
+      variables: [
+        {
+          id: "add",
+          name: "Add",
+          value: {
+            kind: "formula",
+            formula: {
+              op: "add",
+              left: { kind: "path", path: "invoice.subtotal" },
+              right: { kind: "path", path: "invoice.tax" },
+            },
+          },
+        },
+        {
+          id: "subtract",
+          name: "Subtract",
+          value: {
+            kind: "formula",
+            formula: {
+              op: "subtract",
+              left: { kind: "path", path: "invoice.total" },
+              right: { kind: "path", path: "invoice.discount" },
+            },
+          },
+        },
+        {
+          id: "multiply",
+          name: "Multiply",
+          value: {
+            kind: "formula",
+            formula: {
+              op: "multiply",
+              left: { kind: "path", path: "item.quantity" },
+              right: { kind: "path", path: "item.unitPrice" },
+            },
+          },
+        },
+        {
+          id: "divide",
+          name: "Divide",
+          value: {
+            kind: "formula",
+            formula: {
+              op: "divide",
+              left: { kind: "path", path: "invoice.total" },
+              right: { kind: "literal", value: 2 },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(extractBindings(template)).toEqual([
+      "invoice.discount",
+      "invoice.subtotal",
+      "invoice.tax",
+      "invoice.total",
+      "item.quantity",
+      "item.unitPrice",
     ]);
   });
 
