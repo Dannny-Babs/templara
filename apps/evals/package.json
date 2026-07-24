@@ -1,0 +1,15 @@
+{
+  "name": "@templara/evals",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo 'no build'",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@templara/core": "workspace:*",
+    "@templara/templates": "workspace:*"
+  }
+}
