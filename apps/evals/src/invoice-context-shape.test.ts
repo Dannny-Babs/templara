@@ -1,6 +1,7 @@
+import { MONEY_FORMAT_SUFFIXES } from "@templara/core";
 import { describe, expect, it } from "vitest";
 import { findPathsEndingWith, getAtPath, loadJsonFixture } from "./fixture-utils.js";
-import { MONEY_SUFFIX_LEAVES } from "./suffix-allowlist.js";
+import { FIXTURE_MONEY_SUFFIX_LEAVES } from "./suffix-allowlist.js";
 
 type InvoiceContext = {
   org?: unknown;
@@ -25,9 +26,14 @@ describe("invoice context shape", () => {
     expect(context.document).not.toBeNull();
   });
 
-  it("exposes fixture money suffix leaves as strings", () => {
-    // Fixture-present only — not full P3 MoneyFormatType coverage.
-    expect([...MONEY_SUFFIX_LEAVES]).toEqual([
+  it("shares core P3 money allowlist and asserts fixture-present leaves", () => {
+    // Full closed set lives in @templara/core; fixture only exercises a subset.
+    expect([...MONEY_FORMAT_SUFFIXES]).toEqual([
+      "withCurrencyCode",
+      "withDecimalsAndCurrencyCode",
+      "unroundedWithoutCurrencyCode",
+    ]);
+    expect([...FIXTURE_MONEY_SUFFIX_LEAVES]).toEqual([
       "withDecimalsAndCurrencyCode",
       "unroundedWithoutCurrencyCode",
     ]);
